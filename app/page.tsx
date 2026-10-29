@@ -12,6 +12,16 @@ import { absoluteUrl, siteName } from "@/lib/seo";
 // Rebuild the public homepage at most once per minute; article ingestion is 10/day.
 export const revalidate = 60;
 
+/** Keep the homepage renderable when one optional data source is temporarily unavailable. */
+async function safeHomepageQuery<T>(label: string, query: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await query();
+  } catch (error) {
+    console.error(`[homepage] Could not load ${label}`, error);
+    return fallback;
+  }
+}
+
 const topics = [
   { title: "Cẩm nang", shortTitle: "Cẩm nang", subtitle: "Chuẩn bị hành trình tự tin hơn", href: "/chuyen-muc/cam-nang", image: "https://images.unsplash.com/photo-1473448912268-2022ce9509d8?auto=format&fit=crop&w=900&q=85", imageAlt: "Con đường đi bộ giữa rừng xanh" },
   { title: "Ẩm thực", shortTitle: "Ẩm thực", subtitle: "Đi qua mỗi nơi bằng hương vị", href: "/chuyen-muc/am-thuc", image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=85", imageAlt: "Các món ăn địa phương được bày trên bàn" },
@@ -20,9 +30,17 @@ const topics = [
 ];
 
 export default async function HomePage() {
-  const [featuredPosts, latest, countries] = await Promise.all([getFeaturedPosts(8), getRecentPosts(24), getCountries()]);
+  const [featuredPosts, latest, countries] = await Promise.all([
+    safeHomepageQuery("featured posts", async () => Array.from(await getFeaturedPosts(8)), []),
+    safeHomepageQuery("recent posts", async () => Array.from(await getRecentPosts(24)), []),
+    safeHomepageQuery("destinations", async () => Array.from(await getCountries()), []),
+  ]);
+
+  // If the featured query fails but the recent-post query works, still show real
+  // published content in the hero instead of presenting an empty homepage.
+  const heroPosts = featuredPosts.length > 0 ? featuredPosts : latest.slice(0, 3);
   const activeCountries = countries.filter((country) => country.post_count > 0);
-  const featuredSlugs = new Set(featuredPosts.map((post) => post.slug));
+  const featuredSlugs = new Set(heroPosts.map((post) => post.slug));
   const nonFeatured = latest.filter((post) => !featuredSlugs.has(post.slug));
   // Keep the editorial hierarchy clean: featured stories appear in the carousel,
   // side stories show the newest non-featured posts, and the grid excludes both.
@@ -52,9 +70,9 @@ export default async function HomePage() {
             <span className="issue-date">Tạp chí trực tuyến · Mỗi ngày một góc nhìn</span>
           </div>
 
-          {featuredPosts.length > 0 ? (
+          {heroPosts.length > 0 ? (
             <div className="hero-grid">
-              <FeaturedCarousel posts={featuredPosts.map((post) => ({
+              <FeaturedCarousel posts={heroPosts.map((post) => ({
                 id: post.id,
                 title: post.title,
                 slug: post.slug,
@@ -70,10 +88,22 @@ export default async function HomePage() {
               }))} />
             </div>
           ) : (
-            <div className="empty-content">
-              <h2>Đi để hiểu hơn, trở về với nhiều câu chuyện hơn.</h2>
-              <p>Khám phá những điểm đến mới, hương vị địa phương và hành trình theo cách của bạn.</p>
-              <Link href="/diem-den" className="hero-text-link">Khám phá điểm đến <MoveRight size={16} /></Link>
+            <div className="empty-content home-empty-state">
+              <div className="home-empty-state-copy">
+                <span className="eyebrow">MỞ LỐI CHO HÀNH TRÌNH MỚI</span>
+                <h1>Đi để hiểu hơn, trở về với nhiều câu chuyện hơn.</h1>
+                <p>Khám phá điểm đến, hương vị địa phương và những kinh nghiệm hữu ích cho chuyến đi tiếp theo.</p>
+                <div className="home-empty-actions">
+                  <Link href="/diem-den" className="button-primary">Khám phá điểm đến <MoveRight size={16} /></Link>
+                  <Link href="/chuyen-muc/cam-nang" className="button-secondary">Đọc cẩm nang</Link>
+                </div>
+              </div>
+              <div className="home-empty-state-art" aria-hidden="true">
+                <div className="home-empty-orbit home-empty-orbit-outer" />
+                <div className="home-empty-orbit home-empty-orbit-inner" />
+                <div className="home-empty-compass"><Compass size={42} strokeWidth={1.25} /></div>
+                <span>ĐI · ĐẾN · TRẢI NGHIỆM</span>
+              </div>
             </div>
           )}
         </div>

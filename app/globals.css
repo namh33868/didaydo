@@ -1590,3 +1590,81 @@ body { background: var(--editorial-paper); }
 @media (prefers-reduced-motion: reduce) {
   .recent-story-card, .recent-story-image img { transition: none !important; }
 }
+
+/* Homepage fallback state: preserve the editorial design when no public story is available. */
+.home-empty-state {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(210px, .8fr);
+  align-items: center;
+  gap: clamp(24px, 5vw, 64px);
+  min-height: 350px;
+  padding: clamp(28px, 5vw, 64px);
+  overflow: hidden;
+  border: 1px solid var(--editorial-border, #e1e3d9);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 82% 44%, rgba(199, 121, 77, .11), transparent 26%),
+    linear-gradient(125deg, #fffdf8 0%, #f0f3eb 100%);
+  text-align: left;
+  color: var(--ink);
+}
+.home-empty-state::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  right: -120px;
+  bottom: -210px;
+  width: 380px;
+  height: 380px;
+  border: 1px solid rgba(36, 75, 58, .12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 32px rgba(36, 75, 58, .025), 0 0 0 70px rgba(36, 75, 58, .02);
+  pointer-events: none;
+}
+.home-empty-state-copy { position: relative; z-index: 1; max-width: 650px; }
+.home-empty-state .eyebrow { color: var(--editorial-coral, #c7794d); }
+.home-empty-state h1 {
+  max-width: 16ch;
+  margin: 13px 0 14px;
+  color: var(--editorial-forest-deep, #173526);
+  font-family: var(--serif);
+  font-size: clamp(34px, 4.1vw, 54px);
+  font-weight: 400;
+  letter-spacing: -.035em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+.home-empty-state p { max-width: 54ch; margin: 0; color: #687269; font-size: 13px; line-height: 1.85; }
+.home-empty-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 24px; }
+.home-empty-actions .button-primary,
+.home-empty-actions .button-secondary { min-height: 44px; gap: 9px; border-radius: 999px; padding-inline: 17px; }
+.home-empty-actions .button-primary { background: var(--editorial-forest, #244b3a); border-color: var(--editorial-forest, #244b3a); }
+.home-empty-actions .button-primary:hover { background: var(--editorial-forest-deep, #173526); border-color: var(--editorial-forest-deep, #173526); }
+.home-empty-actions .button-secondary { background: rgba(255,255,255,.62); border-color: #d5ddd2; }
+.home-empty-actions .button-secondary:hover { background: #fff; border-color: #9fb29d; }
+.home-empty-state-art { position: relative; display: grid; place-items: center; justify-self: center; width: min(100%, 270px); aspect-ratio: 1; color: var(--editorial-forest, #244b3a); }
+.home-empty-orbit { position: absolute; border: 1px solid rgba(36, 75, 58, .18); border-radius: 50%; }
+.home-empty-orbit-outer { inset: 0; transform: rotate(-24deg) scaleX(.86); }
+.home-empty-orbit-inner { inset: 15%; border-style: dashed; border-color: rgba(199, 121, 77, .42); transform: rotate(28deg) scaleX(.9); }
+.home-empty-compass { display: grid; place-items: center; width: 100px; height: 100px; border: 1px solid rgba(36, 75, 58, .18); border-radius: 50%; background: rgba(255, 253, 248, .78); box-shadow: 0 12px 32px rgba(31, 52, 38, .08); }
+.home-empty-state-art > span { position: absolute; bottom: 12%; padding: 6px 10px; border-radius: 999px; background: #fffdf8; color: #7b887c; font-size: 8px; font-weight: 800; letter-spacing: .16em; white-space: nowrap; }
+
+@media (max-width: 700px) {
+  .home-empty-state { grid-template-columns: minmax(0, 1fr); gap: 20px; min-height: 0; padding: 28px 24px 22px; border-radius: 14px; }
+  .home-empty-state h1 { max-width: 17ch; font-size: clamp(31px, 8vw, 42px); }
+  .home-empty-state p { font-size: 12px; }
+  .home-empty-actions { gap: 8px; margin-top: 19px; }
+  .home-empty-actions .button-primary,
+  .home-empty-actions .button-secondary { min-height: 42px; padding-inline: 14px; font-size: 11px; }
+  .home-empty-state-art { width: 150px; margin-top: 2px; }
+  .home-empty-compass { width: 65px; height: 65px; }
+  .home-empty-compass svg { width: 31px; height: 31px; }
+  .home-empty-state-art > span { bottom: 5%; font-size: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-empty-actions .button-primary,
+  .home-empty-actions .button-secondary { transition: none; }
+}
