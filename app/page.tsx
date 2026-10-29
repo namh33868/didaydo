@@ -72,8 +72,8 @@ export default async function HomePage() {
           ) : (
             <div className="empty-content">
               <h2>Đi để hiểu hơn, trở về với nhiều câu chuyện hơn.</h2>
-              <p>Website đã sẵn sàng. Bài viết sẽ tự hiển thị khi crawler/AI gửi dữ liệu vào API và xuất bản thành công.</p>
-              <Link className="text-link" href="/dang-nhap">Mở trang quản trị <ArrowUpRight size={16} /></Link>
+              <p>Khám phá những điểm đến mới, hương vị địa phương và hành trình theo cách của bạn.</p>
+              <Link href="/diem-den" className="hero-text-link">Khám phá điểm đến <MoveRight size={16} /></Link>
             </div>
           )}
         </div>
@@ -113,16 +113,14 @@ export default async function HomePage() {
         </div>
       </section>}
 
-      <section className="section home-latest-section">
-        <div className="container">
-          <SectionHeading eyebrow="TỪ NHỮNG HÀNH TRÌNH MỚI NHẤT" title="Chuyện mới kể" href="/the-gioi" linkText="Khám phá bài viết" />
-          {gridPosts.length > 0 ? (
+      {gridPosts.length > 0 && (
+        <section className="section home-latest-section">
+          <div className="container">
+            <SectionHeading eyebrow="TỪ NHỮNG HÀNH TRÌNH MỚI NHẤT" title="Chuyện mới kể" href="/the-gioi" linkText="Khám phá bài viết" />
             <div className="post-grid">{gridPosts.map((post) => <PostCard key={post.id} post={post} />)}</div>
-          ) : (
-            <div className="empty-content"><h2>Mở đầu cho những câu chuyện mới</h2><p>Hãy kết nối API crawl + AI để đưa nội dung đầu tiên lên trang.</p></div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       <section className="editorial-banner">
         <div className="container editorial-banner-inner">
