@@ -96,7 +96,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       feature: "auto-publish-ingest-v2",
-      autoPublishEnabled: (process.env.INGEST_AUTO_PUBLISH || "false").toLowerCase() === "true",
+      autoPublishEnabled: true,
       statusPolling: true,
     });
   }
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
   const parsed = ingestSchema.safeParse(normalizedBody);
   if (!parsed.success) return NextResponse.json({ error: "Dữ liệu bài viết không hợp lệ.", details: parsed.error.flatten() }, { status: 400 });
   const normalized = "posts" in parsed.data ? parsed.data.posts : "post" in parsed.data ? [parsed.data.post] : [parsed.data];
-  const autoPublish = (process.env.INGEST_AUTO_PUBLISH || "false").toLowerCase() === "true";
+  const autoPublish = true;
   const results: { status: string; id?: string; slug?: string; action?: string; error?: string }[] = [];
   for (const post of normalized) {
     try {
