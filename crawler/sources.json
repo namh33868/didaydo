@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "description": "English-language travel RSS sources for internal editorial research. Review each source's terms and rights before commercial reuse.",
+  "sources": [
+    {
+      "id": "atlas_obscura",
+      "name": "Atlas Obscura",
+      "homepage": "https://www.atlasobscura.com/",
+      "feed_url": "https://www.atlasobscura.com/rss.xml",
+      "article_domains": [
+        "atlasobscura.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "things-to-do",
+        "culture-local-life",
+        "food-and-drink"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "RSS metadata only for internal research; do not reuse article prose or images without rights."
+    },
+    {
+      "id": "guardian_travel",
+      "name": "The Guardian Travel",
+      "homepage": "https://www.theguardian.com/travel",
+      "feed_url": "https://feeds.theguardian.com/theguardian/travel/rss",
+      "article_domains": [
+        "theguardian.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "hotel-review",
+        "food-and-drink",
+        "destination-news"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Travel RSS feed discovered via feed directory; review commercial terms before production use."
+    },
+    {
+      "id": "nomadic_matt",
+      "name": "Nomadic Matt",
+      "homepage": "https://www.nomadicmatt.com/",
+      "feed_url": "https://www.nomadicmatt.com/feed/",
+      "article_domains": [
+        "nomadicmatt.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "budget-travel",
+        "travel-tips",
+        "itinerary"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Destination guides, budgeting and practical trip-planning."
+    },
+    {
+      "id": "against_the_compass",
+      "name": "Against the Compass",
+      "homepage": "https://againstthecompass.com/",
+      "feed_url": "https://againstthecompass.com/en/travel-blog/feed",
+      "article_domains": [
+        "againstthecompass.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "outdoor-adventure",
+        "culture-local-life",
+        "itinerary"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Adventure travel and in-depth destination guides."
+    },
+    {
+      "id": "anywhere_we_roam",
+      "name": "Anywhere We Roam",
+      "homepage": "https://anywhereweroam.com/",
+      "feed_url": "https://anywhereweroam.com/feed/",
+      "article_domains": [
+        "anywhereweroam.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "itinerary",
+        "outdoor-adventure",
+        "food-and-drink",
+        "culture-local-life"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Destination guides, itineraries, nature and local experiences."
+    },
+    {
+      "id": "luxury_travel_blog",
+      "name": "A Luxury Travel Blog",
+      "homepage": "https://www.aluxurytravelblog.com/",
+      "feed_url": "https://www.aluxurytravelblog.com/feed/",
+      "article_domains": [
+        "aluxurytravelblog.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "hotel-review",
+        "luxury-travel",
+        "food-and-drink",
+        "travel-guide"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Luxury hotels, resorts, dining and experiences. Category-specific feeds are available by adding /feed/ to a category URL."
+    },
+    {
+      "id": "broke_backpacker",
+      "name": "The Broke Backpacker",
+      "homepage": "https://www.thebrokebackpacker.com/",
+      "feed_url": "https://www.thebrokebackpacker.com/feed/",
+      "article_domains": [
+        "thebrokebackpacker.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "budget-travel",
+        "itinerary",
+        "outdoor-adventure"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Backpacking, destination guides, itineraries and budget travel."
+    },
+    {
+      "id": "travel_tester",
+      "name": "The Travel Tester",
+      "homepage": "https://www.thetraveltester.com/",
+      "feed_url": "https://www.thetraveltester.com/feed/",
+      "article_domains": [
+        "thetraveltester.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "travel-tips",
+        "sustainable-travel",
+        "hotel-review"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Travel guides, tips, responsible travel and reviews."
+    },
+    {
+      "id": "stingy_nomads",
+      "name": "Stingy Nomads",
+      "homepage": "https://stingynomads.com/",
+      "feed_url": "https://stingynomads.com/feed/",
+      "article_domains": [
+        "stingynomads.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "outdoor-adventure",
+        "travel-guide",
+        "budget-travel",
+        "itinerary"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Hiking, trekking, outdoor activities and practical guides."
+    },
+    {
+      "id": "nomadasaurus",
+      "name": "NOMADasaurus",
+      "homepage": "https://www.nomadasaurus.com/",
+      "feed_url": "https://www.nomadasaurus.com/feed/",
+      "article_domains": [
+        "nomadasaurus.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "outdoor-adventure",
+        "food-and-drink",
+        "culture-local-life"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Travel guides, adventure and destination experiences."
+    },
+    {
+      "id": "nomadic_vegan",
+      "name": "The Nomadic Vegan",
+      "homepage": "https://www.thenomadicvegan.com/",
+      "feed_url": "https://www.thenomadicvegan.com/feed/",
+      "article_domains": [
+        "thenomadicvegan.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "food-and-drink",
+        "travel-guide",
+        "culture-local-life"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Food-focused travel and vegan-friendly local experiences."
+    },
+    {
+      "id": "wander_with_wonder",
+      "name": "Wander With Wonder",
+      "homepage": "https://www.wanderwithwonder.com/",
+      "feed_url": "https://www.wanderwithwonder.com/feed/",
+      "article_domains": [
+        "wanderwithwonder.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "hotel-review",
+        "food-and-drink",
+        "travel-guide",
+        "luxury-travel"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Travel stories, hotels, food, wine and reviews."
+    },
+    {
+      "id": "tasty_itinerary",
+      "name": "Tasty Itinerary",
+      "homepage": "https://www.tastyitinerary.com/",
+      "feed_url": "https://www.tastyitinerary.com/feed/",
+      "article_domains": [
+        "tastyitinerary.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "food-and-drink",
+        "itinerary",
+        "travel-guide"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Food-focused itineraries and destination recommendations."
+    },
+    {
+      "id": "nomad_is_beautiful",
+      "name": "Nomad Is Beautiful",
+      "homepage": "https://nomadisbeautiful.com/",
+      "feed_url": "https://nomadisbeautiful.com/feed/",
+      "article_domains": [
+        "nomadisbeautiful.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "food-and-drink",
+        "culture-local-life",
+        "travel-tips"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Destinations, food, culture and travel advice."
+    },
+    {
+      "id": "kate_abroad",
+      "name": "Kate Abroad",
+      "homepage": "https://kateabroad.com/",
+      "feed_url": "https://kateabroad.com/feed/",
+      "article_domains": [
+        "kateabroad.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "itinerary",
+        "travel-tips",
+        "food-and-drink"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Destination guides and practical travel planning."
+    },
+    {
+      "id": "travel_trunk",
+      "name": "The Travel Trunk",
+      "homepage": "https://www.thetraveltrunk.net/",
+      "feed_url": "https://www.thetraveltrunk.net/feed/",
+      "article_domains": [
+        "thetraveltrunk.net"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "culture-local-life",
+        "outdoor-adventure",
+        "destination-news"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Travel stories, photography and destinations."
+    },
+    {
+      "id": "bbc_travel",
+      "name": "BBC Travel",
+      "homepage": "https://www.bbc.com/travel",
+      "feed_url": "https://www.bbc.com/travel/feed.rss",
+      "article_domains": [
+        "bbc.com"
+      ],
+      "language": "en",
+      "enabled": false,
+      "focus": [
+        "travel-guide",
+        "culture-local-life",
+        "food-and-drink"
+      ],
+      "permission_status": "permission_required_for_business_use",
+      "notes": "Disabled by default: BBC states business use of RSS/metadata requires permission/licensing. Enable only after permission is obtained."
+    }
+  ]
+}

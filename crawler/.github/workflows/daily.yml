@@ -1,0 +1,61 @@
+name: Daily Travel Content Bot
+
+on:
+  schedule:
+    - cron: "0 10 * * *"
+      timezone: "Asia/Ho_Chi_Minh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: travel-content-bot-daily
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Restore SQLite cache (testing only)
+        uses: actions/cache/restore@v4
+        with:
+          path: data/travel_content.db
+          key: travel-db-${{ github.run_id }}
+          restore-keys: |
+            travel-db-
+
+      - name: Run crawler and send drafts to Telegram
+        env:
+          DATABASE_PATH: data/travel_content.db
+          MAX_ARTICLES: "10"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+        run: python main.py
+
+      - name: Save SQLite cache (not production-grade persistence)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/travel_content.db
+          key: travel-db-${{ github.run_id }}

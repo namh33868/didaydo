@@ -1,0 +1,5369 @@
+{
+  "schema_version": 1,
+  "language": "vi",
+  "top_level_sections": [
+    {
+      "name": "Thế giới",
+      "slug": "the-gioi",
+      "description": "Điểm đến theo quốc gia; mỗi quốc gia có các danh mục nội dung chuẩn hóa."
+    },
+    {
+      "name": "Cẩm nang",
+      "slug": "cam-nang",
+      "topic_slug": "travel-guide"
+    },
+    {
+      "name": "Ẩm thực",
+      "slug": "am-thuc",
+      "topic_slug": "food-and-drink"
+    },
+    {
+      "name": "Khách sạn & lưu trú",
+      "slug": "khach-san-luu-tru",
+      "topic_slug": "hotel-review"
+    },
+    {
+      "name": "Điểm check-in",
+      "slug": "diem-check-in",
+      "topic_slug": "things-to-do"
+    },
+    {
+      "name": "Lịch trình",
+      "slug": "lich-trinh",
+      "topic_slug": "itinerary"
+    }
+  ],
+  "countries": [
+    {
+      "name": "Việt Nam",
+      "slug": "vietnam",
+      "aliases": [
+        "vietnam",
+        "viet nam"
+      ],
+      "cities": [
+        {
+          "name": "Hà Nội",
+          "aliases": [
+            "hanoi"
+          ]
+        },
+        {
+          "name": "TP. Hồ Chí Minh",
+          "aliases": [
+            "ho chi minh city",
+            "ho chi minh",
+            "saigon"
+          ]
+        },
+        {
+          "name": "Đà Nẵng",
+          "aliases": [
+            "da nang"
+          ]
+        },
+        {
+          "name": "Hội An",
+          "aliases": [
+            "hoi an"
+          ]
+        },
+        {
+          "name": "Huế",
+          "aliases": [
+            "hue"
+          ]
+        },
+        {
+          "name": "Phú Quốc",
+          "aliases": [
+            "phu quoc"
+          ]
+        },
+        {
+          "name": "Hạ Long",
+          "aliases": [
+            "ha long"
+          ]
+        },
+        {
+          "name": "Ninh Bình",
+          "aliases": [
+            "ninh binh"
+          ]
+        },
+        {
+          "name": "Sa Pa",
+          "aliases": [
+            "sapa",
+            "sa pa"
+          ]
+        },
+        {
+          "name": "Đà Lạt",
+          "aliases": [
+            "da lat"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Nhật Bản",
+      "slug": "japan",
+      "aliases": [
+        "japan"
+      ],
+      "cities": [
+        {
+          "name": "Tokyo",
+          "aliases": [
+            "tokyo"
+          ]
+        },
+        {
+          "name": "Kyoto",
+          "aliases": [
+            "kyoto"
+          ]
+        },
+        {
+          "name": "Osaka",
+          "aliases": [
+            "osaka"
+          ]
+        },
+        {
+          "name": "Hokkaido",
+          "aliases": [
+            "hokkaido"
+          ]
+        },
+        {
+          "name": "Okinawa",
+          "aliases": [
+            "okinawa"
+          ]
+        },
+        {
+          "name": "Nara",
+          "aliases": [
+            "nara"
+          ]
+        },
+        {
+          "name": "Mount Fuji",
+          "aliases": [
+            "mount fuji",
+            "mt fuji",
+            "fuji"
+          ]
+        },
+        {
+          "name": "Fukuoka",
+          "aliases": [
+            "fukuoka"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Thái Lan",
+      "slug": "thailand",
+      "aliases": [
+        "thailand"
+      ],
+      "cities": [
+        {
+          "name": "Bangkok",
+          "aliases": [
+            "bangkok"
+          ]
+        },
+        {
+          "name": "Chiang Mai",
+          "aliases": [
+            "chiang mai"
+          ]
+        },
+        {
+          "name": "Phuket",
+          "aliases": [
+            "phuket"
+          ]
+        },
+        {
+          "name": "Krabi",
+          "aliases": [
+            "krabi"
+          ]
+        },
+        {
+          "name": "Koh Samui",
+          "aliases": [
+            "koh samui"
+          ]
+        },
+        {
+          "name": "Ayutthaya",
+          "aliases": [
+            "ayutthaya"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Indonesia",
+      "slug": "indonesia",
+      "aliases": [
+        "indonesia"
+      ],
+      "cities": [
+        {
+          "name": "Bali",
+          "aliases": [
+            "bali"
+          ]
+        },
+        {
+          "name": "Jakarta",
+          "aliases": [
+            "jakarta"
+          ]
+        },
+        {
+          "name": "Yogyakarta",
+          "aliases": [
+            "yogyakarta"
+          ]
+        },
+        {
+          "name": "Lombok",
+          "aliases": [
+            "lombok"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Malaysia",
+      "slug": "malaysia",
+      "aliases": [
+        "malaysia"
+      ],
+      "cities": [
+        {
+          "name": "Kuala Lumpur",
+          "aliases": [
+            "kuala lumpur"
+          ]
+        },
+        {
+          "name": "Penang",
+          "aliases": [
+            "penang"
+          ]
+        },
+        {
+          "name": "Langkawi",
+          "aliases": [
+            "langkawi"
+          ]
+        },
+        {
+          "name": "Sabah",
+          "aliases": [
+            "sabah"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Singapore",
+      "slug": "singapore",
+      "aliases": [
+        "singapore"
+      ],
+      "cities": [
+        {
+          "name": "Singapore",
+          "aliases": [
+            "singapore"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Philippines",
+      "slug": "philippines",
+      "aliases": [
+        "philippines",
+        "the philippines"
+      ],
+      "cities": [
+        {
+          "name": "Manila",
+          "aliases": [
+            "manila"
+          ]
+        },
+        {
+          "name": "Cebu",
+          "aliases": [
+            "cebu"
+          ]
+        },
+        {
+          "name": "Palawan",
+          "aliases": [
+            "palawan"
+          ]
+        },
+        {
+          "name": "Boracay",
+          "aliases": [
+            "boracay"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Cambodia",
+      "slug": "cambodia",
+      "aliases": [
+        "cambodia"
+      ],
+      "cities": [
+        {
+          "name": "Siem Reap",
+          "aliases": [
+            "siem reap"
+          ]
+        },
+        {
+          "name": "Phnom Penh",
+          "aliases": [
+            "phnom penh"
+          ]
+        },
+        {
+          "name": "Angkor",
+          "aliases": [
+            "angkor"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Laos",
+      "slug": "laos",
+      "aliases": [
+        "laos"
+      ],
+      "cities": [
+        {
+          "name": "Luang Prabang",
+          "aliases": [
+            "luang prabang"
+          ]
+        },
+        {
+          "name": "Vientiane",
+          "aliases": [
+            "vientiane"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "India",
+      "slug": "india",
+      "aliases": [
+        "india"
+      ],
+      "cities": [
+        {
+          "name": "Delhi",
+          "aliases": [
+            "new delhi",
+            "delhi"
+          ]
+        },
+        {
+          "name": "Mumbai",
+          "aliases": [
+            "mumbai"
+          ]
+        },
+        {
+          "name": "Jaipur",
+          "aliases": [
+            "jaipur"
+          ]
+        },
+        {
+          "name": "Kerala",
+          "aliases": [
+            "kerala"
+          ]
+        },
+        {
+          "name": "Goa",
+          "aliases": [
+            "goa"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Nepal",
+      "slug": "nepal",
+      "aliases": [
+        "nepal"
+      ],
+      "cities": [
+        {
+          "name": "Kathmandu",
+          "aliases": [
+            "kathmandu"
+          ]
+        },
+        {
+          "name": "Pokhara",
+          "aliases": [
+            "pokhara"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Sri Lanka",
+      "slug": "sri-lanka",
+      "aliases": [
+        "sri lanka"
+      ],
+      "cities": [
+        {
+          "name": "Colombo",
+          "aliases": [
+            "colombo"
+          ]
+        },
+        {
+          "name": "Galle",
+          "aliases": [
+            "galle"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "China",
+      "slug": "china",
+      "aliases": [
+        "china"
+      ],
+      "cities": [
+        {
+          "name": "Beijing",
+          "aliases": [
+            "beijing"
+          ]
+        },
+        {
+          "name": "Shanghai",
+          "aliases": [
+            "shanghai"
+          ]
+        },
+        {
+          "name": "Chengdu",
+          "aliases": [
+            "chengdu"
+          ]
+        },
+        {
+          "name": "Yunnan",
+          "aliases": [
+            "yunnan"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "South Korea",
+      "slug": "south-korea",
+      "aliases": [
+        "south korea",
+        "korea"
+      ],
+      "cities": [
+        {
+          "name": "Seoul",
+          "aliases": [
+            "seoul"
+          ]
+        },
+        {
+          "name": "Busan",
+          "aliases": [
+            "busan"
+          ]
+        },
+        {
+          "name": "Jeju",
+          "aliases": [
+            "jeju"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Taiwan",
+      "slug": "taiwan",
+      "aliases": [
+        "taiwan"
+      ],
+      "cities": [
+        {
+          "name": "Taipei",
+          "aliases": [
+            "taipei"
+          ]
+        },
+        {
+          "name": "Tainan",
+          "aliases": [
+            "tainan"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Hong Kong",
+      "slug": "hong-kong",
+      "aliases": [
+        "hong kong"
+      ],
+      "cities": [
+        {
+          "name": "Hong Kong",
+          "aliases": [
+            "hong kong"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Australia",
+      "slug": "australia",
+      "aliases": [
+        "australia"
+      ],
+      "cities": [
+        {
+          "name": "Sydney",
+          "aliases": [
+            "sydney"
+          ]
+        },
+        {
+          "name": "Melbourne",
+          "aliases": [
+            "melbourne"
+          ]
+        },
+        {
+          "name": "Brisbane",
+          "aliases": [
+            "brisbane"
+          ]
+        },
+        {
+          "name": "Perth",
+          "aliases": [
+            "perth"
+          ]
+        },
+        {
+          "name": "Great Barrier Reef",
+          "aliases": [
+            "great barrier reef"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "New Zealand",
+      "slug": "new-zealand",
+      "aliases": [
+        "new zealand"
+      ],
+      "cities": [
+        {
+          "name": "Auckland",
+          "aliases": [
+            "auckland"
+          ]
+        },
+        {
+          "name": "Queenstown",
+          "aliases": [
+            "queenstown"
+          ]
+        },
+        {
+          "name": "Wellington",
+          "aliases": [
+            "wellington"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "United States",
+      "slug": "united-states",
+      "aliases": [
+        "united states",
+        "usa",
+        "u.s.a.",
+        "america"
+      ],
+      "cities": [
+        {
+          "name": "New York City",
+          "aliases": [
+            "new york city",
+            "nyc"
+          ]
+        },
+        {
+          "name": "Los Angeles",
+          "aliases": [
+            "los angeles"
+          ]
+        },
+        {
+          "name": "San Francisco",
+          "aliases": [
+            "san francisco"
+          ]
+        },
+        {
+          "name": "Las Vegas",
+          "aliases": [
+            "las vegas"
+          ]
+        },
+        {
+          "name": "Hawaii",
+          "aliases": [
+            "hawaii"
+          ]
+        },
+        {
+          "name": "Alaska",
+          "aliases": [
+            "alaska"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Canada",
+      "slug": "canada",
+      "aliases": [
+        "canada"
+      ],
+      "cities": [
+        {
+          "name": "Vancouver",
+          "aliases": [
+            "vancouver"
+          ]
+        },
+        {
+          "name": "Toronto",
+          "aliases": [
+            "toronto"
+          ]
+        },
+        {
+          "name": "Montreal",
+          "aliases": [
+            "montreal"
+          ]
+        },
+        {
+          "name": "Banff",
+          "aliases": [
+            "banff"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Mexico",
+      "slug": "mexico",
+      "aliases": [
+        "mexico"
+      ],
+      "cities": [
+        {
+          "name": "Mexico City",
+          "aliases": [
+            "mexico city"
+          ]
+        },
+        {
+          "name": "Cancun",
+          "aliases": [
+            "cancun"
+          ]
+        },
+        {
+          "name": "Oaxaca",
+          "aliases": [
+            "oaxaca"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Brazil",
+      "slug": "brazil",
+      "aliases": [
+        "brazil"
+      ],
+      "cities": [
+        {
+          "name": "Rio de Janeiro",
+          "aliases": [
+            "rio de janeiro"
+          ]
+        },
+        {
+          "name": "Sao Paulo",
+          "aliases": [
+            "sao paulo"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Peru",
+      "slug": "peru",
+      "aliases": [
+        "peru"
+      ],
+      "cities": [
+        {
+          "name": "Cusco",
+          "aliases": [
+            "cusco"
+          ]
+        },
+        {
+          "name": "Machu Picchu",
+          "aliases": [
+            "machu picchu"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "United Kingdom",
+      "slug": "united-kingdom",
+      "aliases": [
+        "united kingdom",
+        "uk",
+        "britain",
+        "england",
+        "scotland",
+        "wales",
+        "northern ireland"
+      ],
+      "cities": [
+        {
+          "name": "London",
+          "aliases": [
+            "london"
+          ]
+        },
+        {
+          "name": "Edinburgh",
+          "aliases": [
+            "edinburgh"
+          ]
+        },
+        {
+          "name": "Manchester",
+          "aliases": [
+            "manchester"
+          ]
+        },
+        {
+          "name": "York",
+          "aliases": [
+            "york"
+          ]
+        },
+        {
+          "name": "Bath",
+          "aliases": [
+            "bath"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Ireland",
+      "slug": "ireland",
+      "aliases": [
+        "ireland"
+      ],
+      "cities": [
+        {
+          "name": "Dublin",
+          "aliases": [
+            "dublin"
+          ]
+        },
+        {
+          "name": "Galway",
+          "aliases": [
+            "galway"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "France",
+      "slug": "france",
+      "aliases": [
+        "france"
+      ],
+      "cities": [
+        {
+          "name": "Paris",
+          "aliases": [
+            "paris"
+          ]
+        },
+        {
+          "name": "Nice",
+          "aliases": [
+            "nice"
+          ]
+        },
+        {
+          "name": "Lyon",
+          "aliases": [
+            "lyon"
+          ]
+        },
+        {
+          "name": "Provence",
+          "aliases": [
+            "provence"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Italy",
+      "slug": "italy",
+      "aliases": [
+        "italy"
+      ],
+      "cities": [
+        {
+          "name": "Rome",
+          "aliases": [
+            "rome"
+          ]
+        },
+        {
+          "name": "Venice",
+          "aliases": [
+            "venice"
+          ]
+        },
+        {
+          "name": "Florence",
+          "aliases": [
+            "florence"
+          ]
+        },
+        {
+          "name": "Milan",
+          "aliases": [
+            "milan"
+          ]
+        },
+        {
+          "name": "Amalfi Coast",
+          "aliases": [
+            "amalfi coast"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Spain",
+      "slug": "spain",
+      "aliases": [
+        "spain"
+      ],
+      "cities": [
+        {
+          "name": "Barcelona",
+          "aliases": [
+            "barcelona"
+          ]
+        },
+        {
+          "name": "Madrid",
+          "aliases": [
+            "madrid"
+          ]
+        },
+        {
+          "name": "Seville",
+          "aliases": [
+            "seville"
+          ]
+        },
+        {
+          "name": "Mallorca",
+          "aliases": [
+            "mallorca"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Portugal",
+      "slug": "portugal",
+      "aliases": [
+        "portugal"
+      ],
+      "cities": [
+        {
+          "name": "Lisbon",
+          "aliases": [
+            "lisbon"
+          ]
+        },
+        {
+          "name": "Porto",
+          "aliases": [
+            "porto"
+          ]
+        },
+        {
+          "name": "Madeira",
+          "aliases": [
+            "madeira"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Greece",
+      "slug": "greece",
+      "aliases": [
+        "greece"
+      ],
+      "cities": [
+        {
+          "name": "Athens",
+          "aliases": [
+            "athens"
+          ]
+        },
+        {
+          "name": "Santorini",
+          "aliases": [
+            "santorini"
+          ]
+        },
+        {
+          "name": "Crete",
+          "aliases": [
+            "crete"
+          ]
+        },
+        {
+          "name": "Mykonos",
+          "aliases": [
+            "mykonos"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Germany",
+      "slug": "germany",
+      "aliases": [
+        "germany"
+      ],
+      "cities": [
+        {
+          "name": "Berlin",
+          "aliases": [
+            "berlin"
+          ]
+        },
+        {
+          "name": "Munich",
+          "aliases": [
+            "munich"
+          ]
+        },
+        {
+          "name": "Hamburg",
+          "aliases": [
+            "hamburg"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Netherlands",
+      "slug": "netherlands",
+      "aliases": [
+        "netherlands",
+        "the netherlands",
+        "holland"
+      ],
+      "cities": [
+        {
+          "name": "Amsterdam",
+          "aliases": [
+            "amsterdam"
+          ]
+        },
+        {
+          "name": "Rotterdam",
+          "aliases": [
+            "rotterdam"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Switzerland",
+      "slug": "switzerland",
+      "aliases": [
+        "switzerland"
+      ],
+      "cities": [
+        {
+          "name": "Zurich",
+          "aliases": [
+            "zurich"
+          ]
+        },
+        {
+          "name": "Geneva",
+          "aliases": [
+            "geneva"
+          ]
+        },
+        {
+          "name": "Lucerne",
+          "aliases": [
+            "lucerne"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Austria",
+      "slug": "austria",
+      "aliases": [
+        "austria"
+      ],
+      "cities": [
+        {
+          "name": "Vienna",
+          "aliases": [
+            "vienna"
+          ]
+        },
+        {
+          "name": "Salzburg",
+          "aliases": [
+            "salzburg"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Iceland",
+      "slug": "iceland",
+      "aliases": [
+        "iceland"
+      ],
+      "cities": [
+        {
+          "name": "Reykjavik",
+          "aliases": [
+            "reykjavik"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Norway",
+      "slug": "norway",
+      "aliases": [
+        "norway"
+      ],
+      "cities": [
+        {
+          "name": "Oslo",
+          "aliases": [
+            "oslo"
+          ]
+        },
+        {
+          "name": "Bergen",
+          "aliases": [
+            "bergen"
+          ]
+        },
+        {
+          "name": "Lofoten",
+          "aliases": [
+            "lofoten"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Sweden",
+      "slug": "sweden",
+      "aliases": [
+        "sweden"
+      ],
+      "cities": [
+        {
+          "name": "Stockholm",
+          "aliases": [
+            "stockholm"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Denmark",
+      "slug": "denmark",
+      "aliases": [
+        "denmark"
+      ],
+      "cities": [
+        {
+          "name": "Copenhagen",
+          "aliases": [
+            "copenhagen"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Finland",
+      "slug": "finland",
+      "aliases": [
+        "finland"
+      ],
+      "cities": [
+        {
+          "name": "Helsinki",
+          "aliases": [
+            "helsinki"
+          ]
+        },
+        {
+          "name": "Lapland",
+          "aliases": [
+            "lapland"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Türkiye",
+      "slug": "turkiye",
+      "aliases": [
+        "turkiye",
+        "türkiye",
+        "turkey"
+      ],
+      "cities": [
+        {
+          "name": "Istanbul",
+          "aliases": [
+            "istanbul"
+          ]
+        },
+        {
+          "name": "Cappadocia",
+          "aliases": [
+            "cappadocia"
+          ]
+        },
+        {
+          "name": "Antalya",
+          "aliases": [
+            "antalya"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Morocco",
+      "slug": "morocco",
+      "aliases": [
+        "morocco"
+      ],
+      "cities": [
+        {
+          "name": "Marrakech",
+          "aliases": [
+            "marrakech"
+          ]
+        },
+        {
+          "name": "Fes",
+          "aliases": [
+            "fes"
+          ]
+        },
+        {
+          "name": "Chefchaouen",
+          "aliases": [
+            "chefchaouen"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Egypt",
+      "slug": "egypt",
+      "aliases": [
+        "egypt"
+      ],
+      "cities": [
+        {
+          "name": "Cairo",
+          "aliases": [
+            "cairo"
+          ]
+        },
+        {
+          "name": "Luxor",
+          "aliases": [
+            "luxor"
+          ]
+        },
+        {
+          "name": "Aswan",
+          "aliases": [
+            "aswan"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "South Africa",
+      "slug": "south-africa",
+      "aliases": [
+        "south africa"
+      ],
+      "cities": [
+        {
+          "name": "Cape Town",
+          "aliases": [
+            "cape town"
+          ]
+        },
+        {
+          "name": "Johannesburg",
+          "aliases": [
+            "johannesburg"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Kenya",
+      "slug": "kenya",
+      "aliases": [
+        "kenya"
+      ],
+      "cities": [
+        {
+          "name": "Nairobi",
+          "aliases": [
+            "nairobi"
+          ]
+        },
+        {
+          "name": "Maasai Mara",
+          "aliases": [
+            "maasai mara"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Tanzania",
+      "slug": "tanzania",
+      "aliases": [
+        "tanzania"
+      ],
+      "cities": [
+        {
+          "name": "Zanzibar",
+          "aliases": [
+            "zanzibar"
+          ]
+        },
+        {
+          "name": "Serengeti",
+          "aliases": [
+            "serengeti"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "United Arab Emirates",
+      "slug": "united-arab-emirates",
+      "aliases": [
+        "united arab emirates",
+        "uae"
+      ],
+      "cities": [
+        {
+          "name": "Dubai",
+          "aliases": [
+            "dubai"
+          ]
+        },
+        {
+          "name": "Abu Dhabi",
+          "aliases": [
+            "abu dhabi"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Jordan",
+      "slug": "jordan",
+      "aliases": [
+        "jordan"
+      ],
+      "cities": [
+        {
+          "name": "Amman",
+          "aliases": [
+            "amman"
+          ]
+        },
+        {
+          "name": "Petra",
+          "aliases": [
+            "petra"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Argentina",
+      "slug": "argentina",
+      "aliases": [
+        "argentina"
+      ],
+      "cities": [
+        {
+          "name": "Buenos Aires",
+          "aliases": [
+            "buenos aires"
+          ]
+        },
+        {
+          "name": "Patagonia",
+          "aliases": [
+            "patagonia"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Chile",
+      "slug": "chile",
+      "aliases": [
+        "chile"
+      ],
+      "cities": [
+        {
+          "name": "Santiago",
+          "aliases": [
+            "santiago"
+          ]
+        },
+        {
+          "name": "Atacama Desert",
+          "aliases": [
+            "atacama desert"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Croatia",
+      "slug": "croatia",
+      "aliases": [
+        "croatia"
+      ],
+      "cities": [
+        {
+          "name": "Dubrovnik",
+          "aliases": [
+            "dubrovnik"
+          ]
+        },
+        {
+          "name": "Split",
+          "aliases": [
+            "split"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Czechia",
+      "slug": "czechia",
+      "aliases": [
+        "czechia",
+        "czech republic"
+      ],
+      "cities": [
+        {
+          "name": "Prague",
+          "aliases": [
+            "prague"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Poland",
+      "slug": "poland",
+      "aliases": [
+        "poland"
+      ],
+      "cities": [
+        {
+          "name": "Krakow",
+          "aliases": [
+            "krakow"
+          ]
+        },
+        {
+          "name": "Warsaw",
+          "aliases": [
+            "warsaw"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Belgium",
+      "slug": "belgium",
+      "aliases": [
+        "belgium"
+      ],
+      "cities": [
+        {
+          "name": "Brussels",
+          "aliases": [
+            "brussels"
+          ]
+        },
+        {
+          "name": "Bruges",
+          "aliases": [
+            "bruges"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Maldives",
+      "slug": "maldives",
+      "aliases": [
+        "maldives"
+      ],
+      "cities": [
+        {
+          "name": "Malé",
+          "aliases": [
+            "male"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Fiji",
+      "slug": "fiji",
+      "aliases": [
+        "fiji"
+      ],
+      "cities": [
+        {
+          "name": "Fiji",
+          "aliases": [
+            "fiji"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Pakistan",
+      "slug": "pakistan",
+      "aliases": [
+        "pakistan"
+      ],
+      "cities": [
+        {
+          "name": "Lahore",
+          "aliases": [
+            "lahore"
+          ]
+        },
+        {
+          "name": "Islamabad",
+          "aliases": [
+            "islamabad"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    },
+    {
+      "name": "Uzbekistan",
+      "slug": "uzbekistan",
+      "aliases": [
+        "uzbekistan"
+      ],
+      "cities": [
+        {
+          "name": "Samarkand",
+          "aliases": [
+            "samarkand"
+          ]
+        },
+        {
+          "name": "Bukhara",
+          "aliases": [
+            "bukhara"
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "Cẩm nang du lịch",
+          "slug": "travel-guide"
+        },
+        {
+          "name": "Ẩm thực & đồ uống",
+          "slug": "food-and-drink"
+        },
+        {
+          "name": "Khách sạn & lưu trú",
+          "slug": "hotel-review"
+        },
+        {
+          "name": "Điểm tham quan & check-in",
+          "slug": "things-to-do"
+        },
+        {
+          "name": "Lịch trình & hành trình",
+          "slug": "itinerary"
+        },
+        {
+          "name": "Văn hóa & đời sống địa phương",
+          "slug": "culture-local-life"
+        },
+        {
+          "name": "Phiêu lưu & thiên nhiên",
+          "slug": "outdoor-adventure"
+        },
+        {
+          "name": "Du lịch tiết kiệm",
+          "slug": "budget-travel"
+        },
+        {
+          "name": "Mẹo & kế hoạch di chuyển",
+          "slug": "travel-tips"
+        },
+        {
+          "name": "Du lịch gia đình",
+          "slug": "family-travel"
+        },
+        {
+          "name": "Du lịch bền vững",
+          "slug": "sustainable-travel"
+        },
+        {
+          "name": "Tin tức điểm đến",
+          "slug": "destination-news"
+        },
+        {
+          "name": "Nghỉ dưỡng cao cấp",
+          "slug": "luxury-travel"
+        },
+        {
+          "name": "Du lịch biển & đảo",
+          "slug": "beach-island"
+        },
+        {
+          "name": "Du lịch đường sắt & phương tiện",
+          "slug": "transport"
+        }
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "name": "Cẩm nang du lịch",
+      "slug": "travel-guide",
+      "aliases": [
+        "travel guide",
+        "destination guide",
+        "guide to",
+        "know before you go",
+        "things to know",
+        "travel tips",
+        "travel advice",
+        "planning a trip",
+        "what to know"
+      ]
+    },
+    {
+      "name": "Ẩm thực & đồ uống",
+      "slug": "food-and-drink",
+      "aliases": [
+        "food",
+        "food guide",
+        "street food",
+        "cuisine",
+        "restaurant",
+        "restaurants",
+        "where to eat",
+        "best places to eat",
+        "food tour",
+        "coffee",
+        "cafe",
+        "cafes",
+        "dining",
+        "dish",
+        "dishes",
+        "vegan",
+        "wine",
+        "cocktail"
+      ]
+    },
+    {
+      "name": "Khách sạn & lưu trú",
+      "slug": "hotel-review",
+      "aliases": [
+        "hotel review",
+        "hotel reviews",
+        "hotels",
+        "hotel",
+        "resort",
+        "resorts",
+        "where to stay",
+        "accommodation",
+        "hostel",
+        "guesthouse",
+        "boutique hotel",
+        "luxury stay",
+        "airbnb"
+      ]
+    },
+    {
+      "name": "Điểm tham quan & check-in",
+      "slug": "things-to-do",
+      "aliases": [
+        "things to do",
+        "things to see",
+        "places to visit",
+        "must-see",
+        "must see",
+        "attractions",
+        "hidden gems",
+        "photo spots",
+        "instagrammable",
+        "landmarks",
+        "sightseeing",
+        "best beaches"
+      ]
+    },
+    {
+      "name": "Lịch trình & hành trình",
+      "slug": "itinerary",
+      "aliases": [
+        "itinerary",
+        "day trip",
+        "weekend in",
+        "3 days in",
+        "4 days in",
+        "5 days in",
+        "7 days in",
+        "road trip",
+        "route",
+        "two weeks in",
+        "one week in"
+      ]
+    },
+    {
+      "name": "Văn hóa & đời sống địa phương",
+      "slug": "culture-local-life",
+      "aliases": [
+        "culture",
+        "cultural",
+        "tradition",
+        "traditions",
+        "local life",
+        "customs",
+        "festival",
+        "festivals",
+        "history",
+        "heritage",
+        "craft",
+        "crafts",
+        "community"
+      ]
+    },
+    {
+      "name": "Phiêu lưu & thiên nhiên",
+      "slug": "outdoor-adventure",
+      "aliases": [
+        "hiking",
+        "trekking",
+        "trail",
+        "trails",
+        "national park",
+        "wildlife",
+        "diving",
+        "snorkeling",
+        "surfing",
+        "camping",
+        "climbing",
+        "mountain",
+        "mountains",
+        "waterfall",
+        "nature"
+      ]
+    },
+    {
+      "name": "Du lịch tiết kiệm",
+      "slug": "budget-travel",
+      "aliases": [
+        "budget travel",
+        "cheap",
+        "affordable",
+        "cost of",
+        "costs",
+        "how much does",
+        "budget",
+        "backpacking",
+        "save money",
+        "on a budget"
+      ]
+    },
+    {
+      "name": "Mẹo & kế hoạch di chuyển",
+      "slug": "travel-tips",
+      "aliases": [
+        "travel tips",
+        "tips for",
+        "visa",
+        "packing",
+        "getting around",
+        "transport",
+        "transportation",
+        "train travel",
+        "ferry",
+        "airport transfer",
+        "travel insurance",
+        "travel advice"
+      ]
+    },
+    {
+      "name": "Du lịch gia đình",
+      "slug": "family-travel",
+      "aliases": [
+        "family travel",
+        "travel with kids",
+        "kids",
+        "children",
+        "family-friendly",
+        "family friendly",
+        "with toddlers"
+      ]
+    },
+    {
+      "name": "Du lịch bền vững",
+      "slug": "sustainable-travel",
+      "aliases": [
+        "sustainable travel",
+        "responsible travel",
+        "eco-tourism",
+        "ecotourism",
+        "low-impact",
+        "community tourism"
+      ]
+    },
+    {
+      "name": "Tin tức điểm đến",
+      "slug": "destination-news",
+      "aliases": [
+        "opens",
+        "opening",
+        "new route",
+        "travel warning",
+        "closed to visitors",
+        "reopening",
+        "new museum",
+        "new attraction",
+        "travel news"
+      ]
+    },
+    {
+      "name": "Nghỉ dưỡng cao cấp",
+      "slug": "luxury-travel",
+      "aliases": [
+        "luxury travel",
+        "luxury hotel",
+        "luxury resort",
+        "private island",
+        "five-star",
+        "5-star",
+        "luxury cruise",
+        "luxury villa"
+      ]
+    },
+    {
+      "name": "Du lịch biển & đảo",
+      "slug": "beach-island",
+      "aliases": [
+        "beach",
+        "beaches",
+        "island",
+        "islands",
+        "tropical island",
+        "snorkeling",
+        "scuba diving",
+        "coast",
+        "coastal"
+      ]
+    },
+    {
+      "name": "Du lịch đường sắt & phương tiện",
+      "slug": "transport",
+      "aliases": [
+        "train",
+        "railway",
+        "rail travel",
+        "ferry",
+        "bus route",
+        "car rental",
+        "driving route",
+        "public transport"
+      ]
+    }
+  ],
+  "fallback_destination": {
+    "name": "Thế giới / Chưa phân loại",
+    "slug": "world-unclassified"
+  },
+  "classification_policy": "Only assign a country/city when a clear alias appears in title/summary/URL/feed categories. Otherwise mark needs_review; do not guess."
+}

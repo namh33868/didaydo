@@ -1,0 +1,126 @@
+name: Daily travel crawler
+
+on:
+  schedule:
+    # 08:00 Vietnam time (UTC+7) every day.
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-travel-crawler-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  crawl-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: crawler
+    env:
+      MAX_ARTICLES: "10"
+      SITE_SYNC_ENABLED: "true"
+      SITE_URL: ${{ secrets.SITE_URL }}
+      SITE_INGEST_API_KEY: ${{ secrets.SITE_INGEST_API_KEY }}
+      SITE_API_TIMEOUT_SECONDS: "30"
+      SOURCE_CONTEXT_MODE: "smart"
+      SOURCE_IMAGE_REUSE_AUTHORIZED: "false"
+      ALLOW_FULL_TEXT_STORAGE: "false"
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: crawler/requirements.txt
+
+      - name: Prepare persistent crawler state folders
+        run: mkdir -p data output logs
+
+      - name: Restore crawl history and output artifacts
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            crawler/data/
+            crawler/output/
+          key: daily-crawler-state-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            daily-crawler-state-${{ runner.os }}-${{ github.ref_name }}-
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Validate required settings
+        shell: bash
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "Missing GitHub Actions secret SITE_URL (production Vercel URL)."
+            exit 1
+          fi
+          if [ -z "$SITE_INGEST_API_KEY" ]; then
+            echo "Missing GitHub Actions secret SITE_INGEST_API_KEY."
+            exit 1
+          fi
+          if [ -z "${GEMINI_API_KEY}${OPENAI_API_KEY}${GROQ_API_KEY}${OPENROUTER_API_KEY}" ]; then
+            echo "Set at least one AI provider secret: GEMINI_API_KEY, OPENAI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY."
+            exit 1
+          fi
+
+      - name: Verify the Vercel ingest API can auto-publish
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          url = os.environ["SITE_URL"].rstrip("/") + "/api/ingest/posts?health=1"
+          request = urllib.request.Request(
+              url, headers={"Authorization": "Bearer " + os.environ["SITE_INGEST_API_KEY"]}
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  result = json.loads(response.read().decode("utf-8"))
+          except Exception as exc:
+              raise SystemExit(f"Vercel ingest health check failed: {type(exc).__name__}")
+          if (result.get("ok") is not True
+                  or result.get("feature") != "auto-publish-ingest-v2"
+                  or result.get("autoPublishEnabled") is not True):
+              raise SystemExit("Vercel API does not report auto-publish enabled. Check route.ts and INGEST_AUTO_PUBLISH=true.")
+          print("Vercel ingest API OK; auto-publish is enabled.")
+          PY
+
+      - name: Crawl up to 10 new articles and publish to Vercel
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m py_compile main.py site_publisher.py sync_to_site.py daily_runner.py
+          python daily_runner.py --limit 10 2>&1 | tee logs/daily-crawl.log
+
+      - name: Save crawl history even if the run fails
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            crawler/data/
+            crawler/output/
+          key: daily-crawler-state-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload crawler log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: daily-crawler-log-${{ github.run_id }}
+          path: crawler/logs/daily-crawl.log
+          if-no-files-found: ignore
+          retention-days: 14
