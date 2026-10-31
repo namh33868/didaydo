@@ -6,6 +6,7 @@ import { cleanArticleHtml } from "@/lib/sanitize";
 import { contentToHtml } from "@/lib/content";
 import { adminPostSchema } from "@/lib/validation";
 import { ensureDestination, ensureTopic } from "@/lib/taxonomy";
+import { ensureFeaturedSchedule } from "@/lib/featured";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,7 @@ function sameOrigin(request: Request) {
 function toAdminPost(post: PostRecord) {
   return {
     id: post.id, title: post.title, slug: post.slug, excerpt: post.excerpt, contentHtml: post.content_html,
+    featuredUntil: post.featured_until?.toISOString() || null,
     coverImage: post.cover_image, coverAlt: post.cover_alt, coverCredit: post.cover_credit, category: post.category_name, categorySlug: post.category_slug,
     country: post.country_name, destination: post.destination_name, createdBy: post.created_by,
     tags: post.tags, status: post.status, featured: post.featured, authorName: post.author_name,
@@ -46,6 +48,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Cần đăng nhập." }, { status: 401 });
   if (!hasPermission(session.role, "posts:view")) return NextResponse.json({ error: "Mày không có quyền xem bài viết." }, { status: 403 });
   try {
+    await ensureFeaturedSchedule();
     const posts = session.role === "author" && session.userId
       ? await db<PostRecord[]>`SELECT * FROM posts WHERE created_by = ${session.userId} AND status = 'draft' ORDER BY updated_at DESC LIMIT 1000`
       : session.role === "author"
@@ -76,20 +79,32 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Vui lòng kiểm tra tiêu đề và các trường dữ liệu.", details: parsed.error.flatten() }, { status: 400 });
   const input = parsed.data;
   try {
+    await ensureFeaturedSchedule();
     const slug = await findUniqueSlug(input.slug || input.title);
     const topic = await ensureTopic(input.category || "Cẩm nang");
     const country = input.country ? await ensureDestination(input.country, "country") : null;
     const destination = input.destination && country ? await ensureDestination(input.destination, "city", country.id) : null;
     const status = session.role === "author" ? "draft" : input.status;
-    const featured = session.role === "author" ? false : input.featured;
+    const featured = session.role !== "author" && status === "published" && input.featured;
+    if (featured) {
+      const countRows = await db<{ total: number }[]>`
+        SELECT COUNT(*)::int AS total FROM posts
+        WHERE featured = TRUE AND featured_until > NOW()
+          AND status = 'published' AND published_at <= NOW()
+      `;
+      if (Number(countRows[0]?.total || 0) >= 8) {
+        return NextResponse.json({ error: "Đã có đủ 8 tin nổi bật. Hãy bỏ chọn một bài trước khi thêm bài khác." }, { status: 409 });
+      }
+    }
+    const featuredUntil = featured ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
     const coverImage = input.coverImage?.trim() || "";
     if (status === "published" && !coverImage) {
       return NextResponse.json({ error: "Bài viết cần ảnh đại diện trước khi xuất bản." }, { status: 400 });
     }
     const publishedAt = status === "published" ? new Date() : null;
     const rows = await db<PostRecord[]>`
-      INSERT INTO posts (title, slug, excerpt, content_html, cover_image, cover_alt, cover_credit, category_name, category_slug, country_id, country_name, country_slug, destination_id, destination_name, destination_slug, tags, status, featured, author_name, created_by, updated_by, source_url, source_name, seo_title, seo_description, published_at)
-      VALUES (${input.title}, ${slug}, ${input.excerpt || ""}, ${cleanArticleHtml(contentToHtml(input.contentHtml || ""))}, ${coverImage}, ${input.coverAlt || ""}, ${input.coverCredit || ""}, ${topic.name}, ${topic.slug || slugify(topic.name)}, ${country?.id || null}, ${country?.name || ""}, ${country?.slug || ""}, ${destination?.id || null}, ${destination?.name || ""}, ${destination?.slug || ""}, ${input.tags || []}, ${status}, ${featured || false}, ${input.authorName || session.fullName || "Ban biên tập"}, ${session.userId}, ${session.userId}, ${input.sourceUrl || null}, ${input.sourceName || ""}, ${input.seoTitle || ""}, ${input.seoDescription || ""}, ${publishedAt})
+      INSERT INTO posts (title, slug, excerpt, content_html, cover_image, cover_alt, cover_credit, category_name, category_slug, country_id, country_name, country_slug, destination_id, destination_name, destination_slug, tags, status, featured, featured_until, author_name, created_by, updated_by, source_url, source_name, seo_title, seo_description, published_at)
+      VALUES (${input.title}, ${slug}, ${input.excerpt || ""}, ${cleanArticleHtml(contentToHtml(input.contentHtml || ""))}, ${coverImage}, ${input.coverAlt || ""}, ${input.coverCredit || ""}, ${topic.name}, ${topic.slug || slugify(topic.name)}, ${country?.id || null}, ${country?.name || ""}, ${country?.slug || ""}, ${destination?.id || null}, ${destination?.name || ""}, ${destination?.slug || ""}, ${input.tags || []}, ${status}, ${featured}, ${featuredUntil}, ${input.authorName || session.fullName || "Ban biên tập"}, ${session.userId}, ${session.userId}, ${input.sourceUrl || null}, ${input.sourceName || ""}, ${input.seoTitle || ""}, ${input.seoDescription || ""}, ${publishedAt})
       RETURNING *
     `;
     return NextResponse.json({ post: toAdminPost(rows[0]) }, { status: 201 });
@@ -120,6 +135,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Dữ liệu cập nhật không hợp lệ hoặc thiếu ID." }, { status: 400 });
   }
   try {
+    await ensureFeaturedSchedule();
     const existing = (await db<PostRecord[]>`SELECT * FROM posts WHERE id = ${postId} LIMIT 1`)[0];
     if (!existing) return NextResponse.json({ error: "Không tìm thấy bài viết." }, { status: 404 });
     if (!hasPermission(session.role, "posts:edit:any")) {
@@ -131,7 +147,21 @@ export async function PATCH(request: Request) {
     const country = input.country ? await ensureDestination(input.country, "country") : null;
     const destination = input.destination && country ? await ensureDestination(input.destination, "city", country.id) : null;
     const status = session.role === "author" ? "draft" : input.status;
-    const featured = session.role === "author" ? false : input.featured;
+    const isCurrentlyFeatured = Boolean(existing.featured && existing.featured_until && existing.featured_until.getTime() > Date.now());
+    const featured = session.role !== "author" && status === "published" && input.featured;
+    if (featured && !isCurrentlyFeatured) {
+      const countRows = await db<{ total: number }[]>`
+        SELECT COUNT(*)::int AS total FROM posts
+        WHERE featured = TRUE AND featured_until > NOW()
+          AND status = 'published' AND published_at <= NOW()
+      `;
+      if (Number(countRows[0]?.total || 0) >= 8) {
+        return NextResponse.json({ error: "Đã có đủ 8 tin nổi bật. Hãy bỏ chọn một bài trước khi thêm bài khác." }, { status: 409 });
+      }
+    }
+    const featuredUntil = featured
+      ? (isCurrentlyFeatured ? existing.featured_until : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+      : null;
     const coverImage = input.coverImage?.trim() || existing.cover_image || "";
     if (status === "published" && !coverImage) {
       return NextResponse.json({ error: "Bài viết cần ảnh đại diện trước khi xuất bản." }, { status: 400 });
@@ -142,7 +172,7 @@ export async function PATCH(request: Request) {
         cover_image = ${coverImage}, cover_alt = ${input.coverAlt || ""}, cover_credit = ${input.coverCredit || ""}, category_name = ${topic.name}, category_slug = ${topic.slug || slugify(topic.name)},
         country_id = ${country?.id || null}, country_name = ${country?.name || ""}, country_slug = ${country?.slug || ""},
         destination_id = ${destination?.id || null}, destination_name = ${destination?.name || ""}, destination_slug = ${destination?.slug || ""},
-        tags = ${input.tags || []}, status = ${status}, featured = ${featured || false}, author_name = ${input.authorName || "Ban biên tập"},
+        tags = ${input.tags || []}, status = ${status}, featured = ${featured}, featured_until = ${featuredUntil}, author_name = ${input.authorName || "Ban biên tập"},
         source_url = ${input.sourceUrl || null}, source_name = ${input.sourceName || ""}, seo_title = ${input.seoTitle || ""}, seo_description = ${input.seoDescription || ""},
         published_at = ${publishedAt}, updated_by = ${session.userId}, updated_at = NOW() WHERE id = ${postId} RETURNING *
     `;
