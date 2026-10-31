@@ -155,7 +155,7 @@ def main():
         report_status = "quota_limited"
     elif total_published == 0 and int(discovery.get("failed_feeds", 0) or 0) > 0 and candidate_url_count == 0:
         report_status = "source_error"
-    elif total_published == 0 and irrelevant_skipped_count > 0 and attempted_urls == 0:
+    elif total_published == 0 and irrelevant_skipped_count > 0 and processed_articles == 0 and failed == 0:
         report_status = "no_relevant_articles"
     elif total_published == 0 and attempted_urls == 0:
         report_status = "no_new_articles"
