@@ -5167,7 +5167,13 @@
         "nhà hàng",
         "ăn gì",
         "cà phê",
-        "đồ uống"
+        "đồ uống",
+        "noodle",
+        "noodles",
+        "bib gourmand",
+        "michelin guide",
+        "local dishes",
+        "specialty food"
       ]
     },
     {
@@ -5197,7 +5203,10 @@
         "đặt phòng",
         "lodge",
         "lodging",
-        "guest lodge"
+        "guest lodge",
+        "lodge review",
+        "hotel and resort",
+        "place to stay"
       ]
     },
     {
@@ -5223,7 +5232,10 @@
         "điểm check-in",
         "chơi gì",
         "tham quan",
-        "điểm vui chơi"
+        "điểm vui chơi",
+        "places to explore",
+        "attractions in",
+        "what to do in"
       ]
     },
     {
