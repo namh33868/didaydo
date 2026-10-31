@@ -1,4 +1,4 @@
-"""Send the daily crawler digest through Resend when repository secrets are configured."""
+"""Send the daily crawler digest through Gmail SMTP or Resend when configured."""
 from __future__ import annotations
 
 import argparse
