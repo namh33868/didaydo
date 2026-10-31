@@ -1684,3 +1684,45 @@ body { background: var(--editorial-paper); }
   .analytics-consent-banner { bottom: 10px; align-items: stretch; flex-direction: column; gap: 12px; padding: 15px; }
   .analytics-consent-actions { justify-content: flex-end; }
 }
+
+
+/* Copyright reporting */
+.copyright-report-section{margin-top:38px;padding-top:26px;border-top:1px solid var(--line)}
+.copyright-report-section>h2{margin-top:10px}
+.copyright-report-form{margin-top:22px;padding:24px;background:#f7f8f4;border:1px solid var(--line)}
+.copyright-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.copyright-report-form label{display:flex;flex-direction:column;gap:7px;color:#39473d;font-size:12px;font-weight:650}
+.copyright-report-form input:not([type=checkbox]),.copyright-report-form select,.copyright-report-form textarea{width:100%;min-height:42px;padding:10px 12px;background:white;border:1px solid #dce3d9;border-radius:2px;color:#26362b;font:inherit;font-weight:400;outline:none}
+.copyright-report-form textarea{resize:vertical;line-height:1.65}
+.copyright-report-form input:focus,.copyright-report-form select:focus,.copyright-report-form textarea:focus{border-color:#66866d;box-shadow:0 0 0 3px rgba(76,119,84,.1)}
+.copyright-form-full{grid-column:1/-1}
+.copyright-declaration{display:flex!important;flex-direction:row!important;align-items:flex-start;margin:18px 0;gap:10px!important;font-weight:400!important;line-height:1.7}
+.copyright-declaration input{margin-top:4px;accent-color:#315b3e}
+.copyright-form-note{display:flex;align-items:flex-start;gap:7px;color:#7a857c;font-size:11px;line-height:1.65;margin:14px 0 0}
+.copyright-form-note svg{flex-shrink:0;margin-top:2px}
+.copyright-form-error,.copyright-form-success{font-size:12px;line-height:1.6;padding:11px 13px;margin:14px 0}
+.copyright-form-error{background:#fff0ed;color:#9c3d2e}
+.copyright-form-success{background:#edf5ed;color:#315b3e}
+.copyright-honeypot{position:absolute!important;left:-10000px!important;top:auto!important;width:1px!important;height:1px!important;overflow:hidden!important}
+.copyright-policy-note{border-top:1px solid var(--line);padding-top:18px;margin-top:28px;font-size:11px!important}
+.copyright-admin-main{max-width:1500px}
+.copyright-report-stats{margin-top:10px}
+.copyright-empty{min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#778278}
+.copyright-empty b{color:#34443a}
+.copyright-empty span{font-size:11px}
+.copyright-admin-list{display:grid;gap:14px;margin-top:18px}
+.copyright-report-card{padding:20px 22px}
+.copyright-report-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.copyright-report-head h2{font-family:var(--serif);font-weight:400;font-size:22px;margin:7px 0}
+.copyright-report-head p{font-size:11px;color:#788379;margin:0}
+.copyright-report-head a,.copyright-report-links a{color:#426d4e;text-decoration:underline;overflow-wrap:anywhere}
+.copyright-report-links{display:grid;gap:7px;margin:18px 0}
+.copyright-report-links p{display:grid;gap:4px;font-size:11px;margin:0}
+.copyright-report-links a{display:flex;align-items:center;gap:5px}
+.copyright-report-details{font-size:12px;line-height:1.75;white-space:pre-wrap;color:#4c594f;background:#f7f8f5;padding:14px;margin:14px 0}
+.copyright-review-note{display:grid;gap:7px;font-size:11px;font-weight:700}
+.copyright-review-note textarea{width:100%;border:1px solid #dfe5dc;padding:10px;font:inherit;font-weight:400;resize:vertical}
+.copyright-report-actions{display:flex;align-items:center;gap:10px;margin-top:13px;flex-wrap:wrap}
+.copyright-report-actions select{min-height:38px;padding:0 10px;border:1px solid #dfe5dc;background:white;font-size:11px}
+.copyright-report-actions span{margin-left:auto;color:#8b948c;font-size:9px;overflow-wrap:anywhere}
+@media(max-width:700px){.copyright-form-grid{grid-template-columns:1fr}.copyright-form-full{grid-column:auto}.copyright-report-form{padding:16px}.copyright-report-head{display:grid}.copyright-report-actions span{margin-left:0;width:100%}.copyright-report-card{padding:16px}}
