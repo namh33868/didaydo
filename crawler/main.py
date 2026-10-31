@@ -2700,6 +2700,7 @@ def main(argv=None):
     duplicates = 0
     failed = 0
     ai_quota_stop = False
+    published_articles = []
 
     if not candidates:
         log.warning("Không tìm thấy ứng viên từ các RSS nguồn đang bật. Kiểm tra sources.json, kết nối mạng và feed_url; không quay lại VnExpress.")
@@ -2806,6 +2807,10 @@ def main(argv=None):
                 if site_result and site_result.get("ok") and site_result.get("status") == "published":
                     if not site_result.get("skipped"):
                         published_count += 1
+                        published_articles.append({
+                            "title": clean_text(draft.get("seo_title") or article.get("source_title")),
+                            "url": site_result.get("site_url") or "",
+                        })
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
                 elif site_result and site_result.get("ok") and site_result.get("skipped"):
                     log.info("Bỏ qua bài website đã xử lý: status=%s slug=%s", site_result.get("status"), site_result.get("slug"))
@@ -2844,6 +2849,7 @@ def main(argv=None):
         "failed": failed,
         "ai_quota_stop": ai_quota_stop,
         "attempted": attempted,
+        "published_articles": published_articles,
     }
 
 
