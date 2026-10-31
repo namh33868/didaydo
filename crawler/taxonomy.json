@@ -5129,7 +5129,11 @@
         "kinh nghiệm du lịch",
         "du lịch tự túc",
         "chuẩn bị chuyến đi",
-        "đi du lịch"
+        "đi du lịch",
+        "route",
+        "road trip route",
+        "motorbike loop",
+        "motorbike route"
       ]
     },
     {
@@ -5190,7 +5194,10 @@
         "homestay",
         "khu nghỉ dưỡng",
         "nghỉ dưỡng",
-        "đặt phòng"
+        "đặt phòng",
+        "lodge",
+        "lodging",
+        "guest lodge"
       ]
     },
     {
@@ -5296,7 +5303,12 @@
         "hang động",
         "thiên nhiên",
         "cắm trại",
-        "khám phá thiên nhiên"
+        "khám phá thiên nhiên",
+        "cave",
+        "caves",
+        "waterfalls",
+        "spelunking",
+        "caving"
       ]
     },
     {
@@ -5465,7 +5477,10 @@
         "xe khách",
         "phà",
         "xe máy",
-        "xe mô tô"
+        "xe mô tô",
+        "metro",
+        "rail",
+        "train route"
       ]
     }
   ],
