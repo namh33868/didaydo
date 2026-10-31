@@ -148,12 +148,15 @@ def main():
     attempted_urls = int(crawler_result.get("attempted", 0) or 0)
     processed_articles = int(crawler_result.get("processed_articles", 0) or 0)
     duplicate_skipped_count = int(crawler_result.get("duplicate_skipped_count", 0) or 0)
+    irrelevant_skipped_count = int(crawler_result.get("irrelevant_skipped_count", 0) or 0)
     duration_seconds = float(crawler_result.get("duration_seconds", 0) or 0)
 
     if ai_quota_stop:
         report_status = "quota_limited"
     elif total_published == 0 and int(discovery.get("failed_feeds", 0) or 0) > 0 and candidate_url_count == 0:
         report_status = "source_error"
+    elif total_published == 0 and irrelevant_skipped_count > 0 and attempted_urls == 0:
+        report_status = "no_relevant_articles"
     elif total_published == 0 and attempted_urls == 0:
         report_status = "no_new_articles"
     elif total_published == 0:
@@ -184,6 +187,7 @@ def main():
         "attempted_url_count": attempted_urls,
         "processed_article_count": processed_articles,
         "duplicate_skipped_count": duplicate_skipped_count,
+        "irrelevant_skipped_count": irrelevant_skipped_count,
         "retry_candidate_count": int(discovery.get("retry_candidates", 0) or 0),
         "duration_seconds": duration_seconds,
         "ai_quota_stop": ai_quota_stop,
