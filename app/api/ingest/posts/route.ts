@@ -101,9 +101,8 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
     : undefined;
 
   const incomingContent = input.contentHtml?.trim()
-    || (input.excerpt?.trim() ? `<p>${input.excerpt}</p>` : "")
     || existing?.content_html
-    || "";
+    || (input.excerpt?.trim() ? `<p>${input.excerpt}</p>` : "");
   if (!incomingContent.trim()) {
     throw new Error("Article content is empty.");
   }
@@ -200,6 +199,27 @@ export async function GET(request: Request) {
       autoPublishEnabled: isAutoPublishEnabled(),
       statusPolling: true,
     });
+  }
+
+  if (url.searchParams.get("missingCover") === "1") {
+    const requestedLimit = Number(url.searchParams.get("limit") || "5");
+    const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(Math.trunc(requestedLimit), 25)) : 5;
+    const posts = await db<{
+      id: string; title: string; excerpt: string; category_name: string;
+      country_name: string; destination_name: string; source_url: string;
+      source_name: string; seo_title: string; seo_description: string; tags: string[];
+    }[]>\`
+      SELECT id, title, excerpt, category_name, country_name, destination_name,
+        source_url, source_name, seo_title, seo_description, tags
+      FROM posts
+      WHERE status = 'published'
+        AND COALESCE(BTRIM(cover_image), '') = ''
+        AND source_url IS NOT NULL
+        AND BTRIM(source_url) <> ''
+      ORDER BY published_at ASC NULLS LAST, created_at ASC
+      LIMIT ${limit}
+    \`;
+    return NextResponse.json({ posts });
   }
 
   const sourceUrl = (url.searchParams.get("sourceUrl") || "").trim();
