@@ -106,11 +106,22 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m py_compile main.py site_publisher.py sync_to_site.py daily_runner.py send_daily_report.py
+          python -m py_compile main.py site_publisher.py image_finder.py sync_to_site.py daily_runner.py send_daily_report.py
           python -c "from bs4 import BeautifulSoup; root=BeautifulSoup('<rss><channel><item><title>parser-check</title></item></channel></rss>', 'xml'); assert root.find('item') and root.find('title').text == 'parser-check'; print('XML RSS parser OK')"
           python - <<'PY'
           from main import classify_article
           from site_publisher import _category_for
+          from image_finder import _contains_phrase, is_license_allowed, _license_allowed_code
+
+          assert _contains_phrase("Ha Long Bay, Vietnam", "Hạ Long"), "Accent-insensitive place matching failed"
+          assert not _contains_phrase("Ninh Van Bay, Vietnam", "Hạ Long"), "Different bay must not match Ha Long"
+          assert is_license_allowed("CC BY-SA 4.0"), "CC BY-SA should be allowed"
+          assert is_license_allowed("Public Domain"), "Public domain should be allowed"
+          assert not is_license_allowed("CC BY-NC 4.0"), "Non-commercial license must be rejected"
+          assert not is_license_allowed("CC BY-ND 4.0"), "No-derivatives license must be rejected"
+          assert _license_allowed_code("by-sa"), "Openverse CC BY-SA should be allowed"
+          assert not _license_allowed_code("by-nc"), "Openverse NC license must be rejected"
+          print("Cover image matching/license smoke test OK")
 
           cases = [
               ({"source_title": "Ẩm thực Đà Nẵng: 10 món ngon", "source_url": "https://example.test/food"}, {"source_language": "vi", "source_focus": ["food-and-drink"]}, "food-and-drink", "Ẩm thực"),
