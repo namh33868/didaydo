@@ -208,7 +208,7 @@ export async function GET(request: Request) {
       id: string; title: string; excerpt: string; category_name: string;
       country_name: string; destination_name: string; source_url: string;
       source_name: string; seo_title: string; seo_description: string; tags: string[];
-    }[]>\`
+    }[]>`
       SELECT id, title, excerpt, category_name, country_name, destination_name,
         source_url, source_name, seo_title, seo_description, tags
       FROM posts
@@ -218,7 +218,7 @@ export async function GET(request: Request) {
         AND BTRIM(source_url) <> ''
       ORDER BY published_at ASC NULLS LAST, created_at ASC
       LIMIT ${limit}
-    \`;
+    `;
     return NextResponse.json({ posts });
   }
 
