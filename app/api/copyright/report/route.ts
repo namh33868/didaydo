@@ -93,7 +93,7 @@ export async function POST(request: Request) {
       RETURNING request_count
     `;
     if (Number(limits[0]?.request_count || 0) > 5) {
-      return NextResponse.json( { error: "Bán đã gửi quá nhiều báo cáo trong thời gian ngắn. Vui lòng thử lại sau." }, { status: 429 });
+      return NextResponse.json( { error: "Bạn đã gửi quá nhiều thông báo trong thời gian ngắn. Vui lòng thử lại sau." }, { status: 429 });
     }
 
     const rows = await db<{ id: string }[]>`
