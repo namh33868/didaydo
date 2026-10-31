@@ -39,7 +39,7 @@ def _plain(value) -> str:
         return " ".join(_plain(item) for item in value if item is not None)
     if isinstance(value, dict):
         return " ".join(_plain(item) for item in value.values() if item is not None)
-    return re.sub(r"\\s+", " ", str(value)).strip()
+    return re.sub(r"\s+", " ", str(value)).strip()
 
 
 def _normalise(value: str) -> str:
@@ -47,7 +47,7 @@ def _normalise(value: str) -> str:
     text = "".join(char for char in text if not unicodedata.combining(char))
     text = text.replace("đ", "d")
     text = re.sub(r"[^a-z0-9]+", " ", text)
-    return re.sub(r"\\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _contains_phrase(haystack: str, phrase: str) -> bool:
@@ -77,7 +77,7 @@ def is_license_allowed(license_name: str) -> bool:
         return False
     if "public domain" in value or "public domain mark" in value or "cc0" in value or value == "pdm":
         return True
-    return bool(re.search(r"\\bcc by(?: sa)?\\b", value))
+    return bool(re.search(r"\bcc by(?: sa)?\b", value))
 
 
 def _license_allowed_code(code: str) -> bool:
@@ -322,7 +322,7 @@ def _openverse_candidates(query: str) -> list[dict]:
         "category": "photograph",
         "aspect_ratio": "wide",
         "size": "large",
-        "page_size": 30,
+        "page_size": 20,
     }
     response = requests.get(
         OPENVERSE_API, params=params, headers={"User-Agent": _USER_AGENT},
