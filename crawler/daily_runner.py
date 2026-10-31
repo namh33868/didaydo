@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import main as bot
 import site_publisher
@@ -85,6 +89,7 @@ def main():
     site_publisher._check_api_ready()
 
     recovered_published = 0
+    published_articles = []
     pending_rows = site_publisher.list_pending_drafts(db_path, limit=maximum)
     for row in pending_rows:
         if recovered_published >= maximum:
@@ -103,6 +108,10 @@ def main():
             raise SystemExit(1)
         if result.get("status") == "published" and not result.get("skipped"):
             recovered_published += 1
+            published_articles.append({
+                "title": str(row.get("seo_title") or row.get("source_title") or "Bài viết mới"),
+                "url": result.get("site_url") or "",
+            })
             log.info("Đã xuất bản lại bài đang chờ: %s", result.get("site_url"))
 
     remaining = maximum - recovered_published
@@ -121,6 +130,7 @@ def main():
         new_published = int(result.get("published_count", 0) or 0)
         failed = int(result.get("failed", 0) or 0)
         ai_quota_stop = bool(result.get("ai_quota_stop"))
+        published_articles.extend(result.get("published_articles") or [])
     else:
         bot._reconcile_site_publications()
         bot.cleanup_published_artifacts()
@@ -128,6 +138,25 @@ def main():
 
     total_published = recovered_published + new_published
     _log_daily_tier(total_published)
+
+    report = {
+        "date": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d"),
+        "generated_at": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat(),
+        "status": "quota_limited" if ai_quota_stop else ("warning" if failed or total_published < minimum else "completed"),
+        "minimum": minimum,
+        "preferred": preferred,
+        "maximum": maximum,
+        "published_count": total_published,
+        "failed_count": failed,
+        "recovered_count": recovered_published,
+        "ai_quota_stop": ai_quota_stop,
+        "articles": published_articles,
+    }
+    report_dir = Path(bot.PROJECT_DIR) / "logs"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "daily-report.json"
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info("Đã tạo báo cáo xuất bản: %s", report_path)
 
     if failed and not ai_quota_stop:
         raise SystemExit(1)
