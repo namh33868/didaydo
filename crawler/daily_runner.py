@@ -88,6 +88,13 @@ def main():
     # Fail before spending AI calls if production deployment is misconfigured.
     site_publisher._check_api_ready()
 
+    image_backfill_limit = _env_int("IMAGE_BACKFILL_PER_RUN", 5, minimum=1, maximum=25)
+    image_backfill = site_publisher.backfill_missing_cover_images(db_path, limit=image_backfill_limit)
+    log.info(
+        "Bù ảnh bài cũ: đã kiểm tra %(checked)s, cập nhật %(updated)s, chưa tìm được %(unmatched)s, lỗi %(failed)s.",
+        image_backfill,
+    )
+
     recovered_published = 0
     published_articles = []
     pending_rows = site_publisher.list_pending_drafts(db_path, limit=maximum)
@@ -196,6 +203,10 @@ def main():
         "duplicate_skipped_count": duplicate_skipped_count,
         "irrelevant_skipped_count": irrelevant_skipped_count,
         "retry_candidate_count": int(discovery.get("retry_candidates", 0) or 0),
+        "image_backfill_checked": int(image_backfill.get("checked", 0) or 0),
+        "image_backfill_updated": int(image_backfill.get("updated", 0) or 0),
+        "image_backfill_unmatched": int(image_backfill.get("unmatched", 0) or 0),
+        "image_backfill_failed": int(image_backfill.get("failed", 0) or 0),
         "duration_seconds": duration_seconds,
         "ai_quota_stop": ai_quota_stop,
         "site_url": site_publisher.SITE_URL,
