@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "English-language travel RSS sources for internal editorial research. Review each source's terms and rights before commercial reuse.",
+  "description": "Curated English and Vietnamese travel RSS sources for internal editorial research. Review feed health and commercial-use terms before publication.",
   "sources": [
     {
       "id": "atlas_obscura",
@@ -201,14 +201,14 @@
         "thenomadicvegan.com"
       ],
       "language": "en",
-      "enabled": true,
+      "enabled": false,
       "focus": [
         "food-and-drink",
         "travel-guide",
         "culture-local-life"
       ],
       "permission_status": "review_terms_before_commercial_reuse",
-      "notes": "Food-focused travel and vegan-friendly local experiences."
+      "notes": "Food-focused travel and vegan-friendly local experiences. Disabled after repeated HTTP 403/503 or TLS errors in crawler logs; re-enable only after a fresh feed health check."
     },
     {
       "id": "wander_with_wonder",
@@ -219,7 +219,7 @@
         "wanderwithwonder.com"
       ],
       "language": "en",
-      "enabled": true,
+      "enabled": false,
       "focus": [
         "hotel-review",
         "food-and-drink",
@@ -227,7 +227,7 @@
         "luxury-travel"
       ],
       "permission_status": "review_terms_before_commercial_reuse",
-      "notes": "Travel stories, hotels, food, wine and reviews."
+      "notes": "Travel stories, hotels, food, wine and reviews. Disabled after repeated HTTP 403/503 or TLS errors in crawler logs; re-enable only after a fresh feed health check."
     },
     {
       "id": "tasty_itinerary",
@@ -275,7 +275,7 @@
         "kateabroad.com"
       ],
       "language": "en",
-      "enabled": true,
+      "enabled": false,
       "focus": [
         "travel-guide",
         "itinerary",
@@ -283,7 +283,7 @@
         "food-and-drink"
       ],
       "permission_status": "review_terms_before_commercial_reuse",
-      "notes": "Destination guides and practical travel planning."
+      "notes": "Destination guides and practical travel planning. Disabled after repeated HTTP 403/503 or TLS errors in crawler logs; re-enable only after a fresh feed health check."
     },
     {
       "id": "travel_trunk",
@@ -321,6 +321,170 @@
       ],
       "permission_status": "permission_required_for_business_use",
       "notes": "Disabled by default: BBC states business use of RSS/metadata requires permission/licensing. Enable only after permission is obtained."
+    },
+    {
+      "id": "vietnam_coracle",
+      "name": "Vietnam Coracle",
+      "homepage": "https://www.vietnamcoracle.com/",
+      "feed_url": "https://www.vietnamcoracle.com/feed/",
+      "article_domains": [
+        "vietnamcoracle.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "food-and-drink",
+        "hotel-review",
+        "things-to-do",
+        "itinerary",
+        "culture-local-life",
+        "outdoor-adventure",
+        "beach-island",
+        "transport",
+        "sustainable-travel"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Independent Vietnam travel resource with recent 2026 guides on destinations, food, accommodation, routes, beaches and nature. FeedSpot identifies an RSS feed; verify live response in the next scheduled run. Metadata/reference only; do not reuse prose or images without permission."
+    },
+    {
+      "id": "you_in_da_nang",
+      "name": "You In Da Nang",
+      "homepage": "https://youindanang.com/",
+      "feed_url": "https://youindanang.com/feed",
+      "article_domains": [
+        "youindanang.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "travel-tips",
+        "things-to-do",
+        "food-and-drink",
+        "hotel-review",
+        "itinerary",
+        "transport",
+        "culture-local-life"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Da Nang-focused resource for travellers and expats, with practical destination tips. FeedSpot lists this RSS endpoint; verify live response in the next scheduled run. Metadata/reference only; review terms before commercial use."
+    },
+    {
+      "id": "uncover_vietnam",
+      "name": "Uncover Vietnam",
+      "homepage": "https://www.uncovervietnam.com/blog",
+      "feed_url": "https://www.uncovervietnam.com/feed",
+      "article_domains": [
+        "uncovervietnam.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "things-to-do",
+        "hotel-review",
+        "transport",
+        "itinerary",
+        "food-and-drink",
+        "culture-local-life"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Vietnam-focused travel blog covering activities, towns, lodging, transportation and itineraries. FeedSpot lists this RSS endpoint; verify live response in the next scheduled run. Metadata/reference only; no full-text or image reuse without rights."
+    },
+    {
+      "id": "viet_center_tourist",
+      "name": "Viet Center Tourist Blog",
+      "homepage": "https://vietcentertourist.com/blog",
+      "feed_url": "https://vietcentertourist.com/rss",
+      "article_domains": [
+        "vietcentertourist.com"
+      ],
+      "language": "en",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "things-to-do",
+        "food-and-drink",
+        "culture-local-life",
+        "itinerary",
+        "travel-tips"
+      ],
+      "permission_status": "review_terms_before_commercial_reuse",
+      "notes": "Vietnam/Indochina local travel information from an inbound tour operator. FeedSpot lists this RSS endpoint; verify feed freshness and response in the next scheduled run. Metadata/reference only; review commercial terms."
+    },
+    {
+      "id": "vntravel_destinations",
+      "name": "Tạp chí Vietnam Travel — Điểm đến",
+      "homepage": "https://vntravel.org.vn/",
+      "feed_url": "https://vntravel.org.vn/rss/diem-den.rss",
+      "article_domains": [
+        "vntravel.org.vn"
+      ],
+      "language": "vi",
+      "enabled": true,
+      "focus": [
+        "things-to-do",
+        "travel-guide",
+        "culture-local-life",
+        "destination-news"
+      ],
+      "permission_status": "credit_required_review_commercial_terms",
+      "notes": "Official RSS category linked from the magazine's RSS directory. Vietnamese destination articles. The directory asks users to credit Vietnam Travel when republishing information; retain source attribution and review commercial terms. Metadata/reference only."
+    },
+    {
+      "id": "vntravel_guides",
+      "name": "Tạp chí Vietnam Travel — Cẩm nang",
+      "homepage": "https://vntravel.org.vn/",
+      "feed_url": "https://vntravel.org.vn/rss/cam-nang.rss",
+      "article_domains": [
+        "vntravel.org.vn"
+      ],
+      "language": "vi",
+      "enabled": true,
+      "focus": [
+        "travel-guide",
+        "travel-tips",
+        "itinerary",
+        "transport"
+      ],
+      "permission_status": "credit_required_review_commercial_terms",
+      "notes": "Official RSS category linked from the magazine's RSS directory. Vietnamese travel guides and planning. Retain source attribution and review commercial terms. Metadata/reference only."
+    },
+    {
+      "id": "vntravel_food",
+      "name": "Tạp chí Vietnam Travel — Ẩm thực",
+      "homepage": "https://vntravel.org.vn/",
+      "feed_url": "https://vntravel.org.vn/rss/am-thuc.rss",
+      "article_domains": [
+        "vntravel.org.vn"
+      ],
+      "language": "vi",
+      "enabled": true,
+      "focus": [
+        "food-and-drink",
+        "culture-local-life"
+      ],
+      "permission_status": "credit_required_review_commercial_terms",
+      "notes": "Official RSS category linked from the magazine's RSS directory. Vietnamese food and restaurant stories. Retain source attribution and review commercial terms. Metadata/reference only."
+    },
+    {
+      "id": "vntravel_hotels",
+      "name": "Tạp chí Vietnam Travel — Hotel & Resort",
+      "homepage": "https://vntravel.org.vn/",
+      "feed_url": "https://vntravel.org.vn/rss/hotel-and-resort.rss",
+      "article_domains": [
+        "vntravel.org.vn"
+      ],
+      "language": "vi",
+      "enabled": true,
+      "focus": [
+        "hotel-review",
+        "luxury-travel",
+        "travel-guide"
+      ],
+      "permission_status": "credit_required_review_commercial_terms",
+      "notes": "Official RSS category linked from the magazine's RSS directory. Vietnamese hotel, resort and accommodation content. Retain source attribution and review commercial terms. Metadata/reference only."
     }
   ]
 }
