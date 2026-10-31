@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAdminSession, hasPermission } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureFeaturedSchedule } from "@/lib/featured";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,8 @@ export async function PATCH(request: Request) {
   const postId = parsed.data.id;
   const shouldFeature = parsed.data.featured;
   try {
-    const currentRows = await db<{ id: string; status: string; featured: boolean; published_at: Date | null }[]>`
+    await ensureFeaturedSchedule();
+    const currentRows = await db<{ id: string; status: string; featured: boolean; featured_until: Date | null; published_at: Date | null }[]>`
       SELECT id, status, featured, published_at FROM posts WHERE id = ${postId} LIMIT 1
     `;
     const current = currentRows[0];
@@ -50,7 +52,7 @@ export async function PATCH(request: Request) {
     if (shouldFeature && !current.featured) {
       const countRows = await db<{ total: number }[]>`
         SELECT COUNT(*)::int AS total FROM posts
-        WHERE featured = TRUE AND status = 'published' AND published_at <= NOW()
+        WHERE featured = TRUE AND featured_until > NOW() AND status = 'published' AND published_at <= NOW()
       `;
       if (Number(countRows[0]?.total || 0) >= 8) {
         return NextResponse.json({ error: "Đã chọn đủ 8 tin nổi bật. Hãy bỏ chọn một bài trước khi thêm bài khác." }, { status: 409 });
@@ -59,11 +61,19 @@ export async function PATCH(request: Request) {
 
     const updated = await db<{ id: string; featured: boolean }[]>`
       UPDATE posts
-      SET featured = ${shouldFeature}, updated_by = ${session.userId}, updated_at = NOW()
+      SET featured = ${shouldFeature},
+        featured_until = CASE
+          WHEN ${shouldFeature} THEN CASE
+            WHEN featured = TRUE AND featured_until > NOW() THEN featured_until
+            ELSE NOW() + INTERVAL '7 days'
+          END
+          ELSE NULL
+        END,
+        updated_by = ${session.userId}, updated_at = NOW()
       WHERE id = ${postId}
-      RETURNING id, featured
+      RETURNING id, featured, featured_until
     `;
-    return NextResponse.json({ success: true, id: updated[0]?.id, featured: updated[0]?.featured });
+    return NextResponse.json({ success: true, id: updated[0]?.id, featured: updated[0]?.featured, featuredUntil: updated[0]?.featured_until?.toISOString() || null });
   } catch (error) {
     console.error("admin featured post update failed", error);
     return NextResponse.json({ error: "Không cập nhật được danh sách tin nổi bật." }, { status: 500 });
