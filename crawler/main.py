@@ -782,7 +782,7 @@ def classify_article(article, item=None):
         cities = country.get("cities", [])
         country_matches = any(
             (alias_norm := _normalize_taxonomy_text(alias))
-            and re.search(r"(?<!\\w)" + re.escape(alias_norm) + r"(?!\\w)", haystack)
+            and re.search(r"(?<!\w)" + re.escape(alias_norm) + r"(?!\w)", haystack)
             for alias in sorted(country_aliases, key=len, reverse=True)
         )
         country_city_matches = []
@@ -790,7 +790,7 @@ def classify_article(article, item=None):
             city_aliases = list(city.get("aliases", [])) + [city.get("name", "")]
             for alias in sorted(city_aliases, key=len, reverse=True):
                 alias_norm = _normalize_taxonomy_text(alias)
-                if alias_norm and re.search(r"(?<!\\w)" + re.escape(alias_norm) + r"(?!\\w)", haystack):
+                if alias_norm and re.search(r"(?<!\w)" + re.escape(alias_norm) + r"(?!\w)", haystack):
                     country_city_matches.append(city.get("name", ""))
                     break
         if country_matches or country_city_matches:
@@ -806,7 +806,7 @@ def classify_article(article, item=None):
         score = 0
         for alias in topic.get("aliases", []):
             alias_norm = _normalize_taxonomy_text(alias)
-            if alias_norm and re.search(r"(?<!\\w)" + re.escape(alias_norm) + r"(?!\\w)", haystack):
+            if alias_norm and re.search(r"(?<!\w)" + re.escape(alias_norm) + r"(?!\w)", haystack):
                 score += max(1, min(len(alias_norm.split()), 3))
                 topic_match_count += 1
         if score and topic.get("slug") in (item.get("source_focus") or []):
@@ -826,7 +826,7 @@ def classify_article(article, item=None):
         "xe khach", "bai bien", "dao", "leo nui", "homestay", "mon ngon",
     )
     has_travel_context = any(
-        re.search(r"(?<!\\w)" + re.escape(_normalize_taxonomy_text(term)) + r"(?!\\w)", haystack)
+        re.search(r"(?<!\w)" + re.escape(_normalize_taxonomy_text(term)) + r"(?!\w)", haystack)
         for term in travel_context_terms
     )
     topic_relevant = bool(topic_match_count or has_travel_context)
