@@ -55,6 +55,7 @@ def _build_html(report: dict, job_status: str) -> str:
         <tr><td>Mục tiêu</td><td>{minimum} tối thiểu · {preferred} mong muốn · {maximum} tối đa</td></tr>
         <tr><td>Bài lỗi/chưa xuất bản</td><td>{failed}</td></tr>
         <tr><td>Trạng thái crawler</td><td>{status}</td></tr>
+        <tr><td>Trạng thái workflow</td><td>{html.escape(job_status)}</td></tr>
       </table>
       <h3>Bài đã xuất bản trong lượt này</h3>
       {rows_html}
