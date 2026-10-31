@@ -5122,7 +5122,14 @@
         "travel tips",
         "travel advice",
         "planning a trip",
-        "what to know"
+        "what to know",
+        "cẩm nang",
+        "cẩm nang du lịch",
+        "hướng dẫn du lịch",
+        "kinh nghiệm du lịch",
+        "du lịch tự túc",
+        "chuẩn bị chuyến đi",
+        "đi du lịch"
       ]
     },
     {
@@ -5146,7 +5153,17 @@
         "dishes",
         "vegan",
         "wine",
-        "cocktail"
+        "cocktail",
+        "ẩm thực",
+        "ẩm thực địa phương",
+        "món ăn",
+        "món ngon",
+        "đặc sản",
+        "quán ăn",
+        "nhà hàng",
+        "ăn gì",
+        "cà phê",
+        "đồ uống"
       ]
     },
     {
@@ -5165,7 +5182,15 @@
         "guesthouse",
         "boutique hotel",
         "luxury stay",
-        "airbnb"
+        "airbnb",
+        "khách sạn",
+        "đánh giá khách sạn",
+        "nơi lưu trú",
+        "lưu trú",
+        "homestay",
+        "khu nghỉ dưỡng",
+        "nghỉ dưỡng",
+        "đặt phòng"
       ]
     },
     {
@@ -5183,7 +5208,15 @@
         "instagrammable",
         "landmarks",
         "sightseeing",
-        "best beaches"
+        "best beaches",
+        "điểm tham quan",
+        "địa điểm tham quan",
+        "địa điểm du lịch",
+        "địa điểm check-in",
+        "điểm check-in",
+        "chơi gì",
+        "tham quan",
+        "điểm vui chơi"
       ]
     },
     {
@@ -5200,7 +5233,14 @@
         "road trip",
         "route",
         "two weeks in",
-        "one week in"
+        "one week in",
+        "lịch trình",
+        "lịch trình du lịch",
+        "hành trình",
+        "lịch trình 3 ngày",
+        "lịch trình 5 ngày",
+        "lịch trình 7 ngày",
+        "đi đâu"
       ]
     },
     {
@@ -5219,7 +5259,15 @@
         "heritage",
         "craft",
         "crafts",
-        "community"
+        "community",
+        "văn hóa",
+        "văn hóa địa phương",
+        "đời sống địa phương",
+        "đời sống bản địa",
+        "phong tục",
+        "làng nghề",
+        "di sản",
+        "lễ hội"
       ]
     },
     {
@@ -5240,7 +5288,15 @@
         "mountain",
         "mountains",
         "waterfall",
-        "nature"
+        "nature",
+        "leo núi",
+        "đi bộ đường dài",
+        "vườn quốc gia",
+        "thác nước",
+        "hang động",
+        "thiên nhiên",
+        "cắm trại",
+        "khám phá thiên nhiên"
       ]
     },
     {
@@ -5256,7 +5312,13 @@
         "budget",
         "backpacking",
         "save money",
-        "on a budget"
+        "on a budget",
+        "du lịch tiết kiệm",
+        "chi phí du lịch",
+        "ngân sách du lịch",
+        "chi phí",
+        "giá vé",
+        "mẹo tiết kiệm"
       ]
     },
     {
@@ -5274,7 +5336,16 @@
         "ferry",
         "airport transfer",
         "travel insurance",
-        "travel advice"
+        "travel advice",
+        "mẹo du lịch",
+        "mẹo đi du lịch",
+        "thị thực",
+        "hành lý",
+        "kinh nghiệm di chuyển",
+        "phương tiện",
+        "đường đi",
+        "vé máy bay",
+        "vé tàu"
       ]
     },
     {
@@ -5287,7 +5358,11 @@
         "children",
         "family-friendly",
         "family friendly",
-        "with toddlers"
+        "with toddlers",
+        "du lịch gia đình",
+        "du lịch cùng trẻ em",
+        "trẻ em",
+        "gia đình có trẻ nhỏ"
       ]
     },
     {
@@ -5299,7 +5374,12 @@
         "eco-tourism",
         "ecotourism",
         "low-impact",
-        "community tourism"
+        "community tourism",
+        "du lịch bền vững",
+        "du lịch có trách nhiệm",
+        "du lịch xanh",
+        "du lịch sinh thái",
+        "bảo tồn thiên nhiên"
       ]
     },
     {
@@ -5314,7 +5394,13 @@
         "reopening",
         "new museum",
         "new attraction",
-        "travel news"
+        "travel news",
+        "tin du lịch",
+        "tin tức du lịch",
+        "điểm đến mới",
+        "mở cửa đón khách",
+        "đóng cửa điểm tham quan",
+        "đường bay mới"
       ]
     },
     {
@@ -5328,7 +5414,12 @@
         "five-star",
         "5-star",
         "luxury cruise",
-        "luxury villa"
+        "luxury villa",
+        "du lịch cao cấp",
+        "nghỉ dưỡng cao cấp",
+        "khách sạn 5 sao",
+        "resort 5 sao",
+        "du thuyền hạng sang"
       ]
     },
     {
@@ -5343,7 +5434,14 @@
         "snorkeling",
         "scuba diving",
         "coast",
-        "coastal"
+        "coastal",
+        "du lịch biển",
+        "du lịch biển đảo",
+        "biển đảo",
+        "bãi biển",
+        "đảo",
+        "lặn biển",
+        "tắm biển"
       ]
     },
     {
@@ -5357,7 +5455,17 @@
         "bus route",
         "car rental",
         "driving route",
-        "public transport"
+        "public transport",
+        "di chuyển",
+        "phương tiện",
+        "tàu hỏa",
+        "tàu hoả",
+        "đường sắt",
+        "xe buýt",
+        "xe khách",
+        "phà",
+        "xe máy",
+        "xe mô tô"
       ]
     }
   ],
