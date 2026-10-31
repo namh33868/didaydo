@@ -214,6 +214,86 @@ def _image_candidates(article: dict) -> list[dict]:
     return [image for image in images if isinstance(image, dict) and clean(image.get("url")).startswith("https://")]
 
 
+
+def _stored_image_list(article: dict) -> list[dict]:
+    images = article.get("source_images")
+    if not isinstance(images, list):
+        try:
+            images = json.loads(article.get("source_images_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            images = []
+    return [item for item in images if isinstance(item, dict)]
+
+
+def _cover_credit(image: dict) -> str:
+    creator = clean(image.get("credit") or image.get("creator") or "Không rõ tác giả")
+    provider = clean(image.get("source_name") or image.get("provider") or "Kho ảnh mở")
+    license_name = clean(image.get("license") or "")
+    source_page = clean(image.get("source_page_url") or "")
+    license_url = clean(image.get("license_url") or "")
+    parts = [f"Ảnh: {creator}", provider]
+    if license_name:
+        parts.append(license_name)
+    if source_page:
+        parts.append("Nguồn ảnh: " + source_page)
+    if license_url:
+        parts.append("Giấy phép: " + license_url)
+    return " · ".join(parts)[:1200]
+
+
+def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
+    """Reuse a cached, license-checked cover or find one; persist it for safe retries."""
+    from image_finder import find_cover_image, is_license_allowed, verify_image_url
+
+    existing = article.get("editorial_cover_image")
+    if not isinstance(existing, dict):
+        existing = next(
+            (item for item in _stored_image_list(article)
+             if item.get("is_cover") is True and item.get("rights_status") == "license_metadata_checked"),
+            None,
+        )
+
+    if isinstance(existing, dict):
+        valid = (
+            clean(existing.get("url")).startswith("https://")
+            and existing.get("rights_status") == "license_metadata_checked"
+            and is_license_allowed(clean(existing.get("license")))
+            and clean(existing.get("source_page_url")).startswith("https://")
+            and clean(existing.get("license_url")).startswith("https://")
+            and verify_image_url(existing.get("url", ""))
+        )
+        if valid:
+            selected = dict(existing)
+        else:
+            selected = None
+            log.warning("Ảnh đại diện đã lưu không còn hợp lệ; sẽ tìm ảnh khác cho %s", article.get("source_url"))
+    else:
+        selected = None
+
+    if selected is None:
+        selected = find_cover_image(article)
+    if not selected:
+        return None
+
+    article["editorial_cover_image"] = selected
+    images = _stored_image_list(article)
+    images = [item for item in images if item.get("image_id") != "COVER_LIBRARY"]
+    images.append(selected)
+    serialized = json.dumps(images, ensure_ascii=False)
+    article["source_images"] = images
+    article["source_images_json"] = serialized
+
+    source_url = normalize_source_url(article.get("source_url", ""))
+    if source_url:
+        with sqlite3.connect(db_path, timeout=30) as conn:
+            conn.execute(
+                "UPDATE articles SET source_images_json=?, updated_at=? WHERE source_url=?",
+                (serialized, now_iso(), source_url),
+            )
+            conn.commit()
+    return selected
+
+
 def build_site_payload(article: dict, draft: dict) -> dict:
     title = clean(draft.get("seo_title") or article.get("source_title"))[:220]
     content_html = draft.get("seo_content") or ""
@@ -234,7 +314,20 @@ def build_site_payload(article: dict, draft: dict) -> dict:
     images = _image_candidates(article)
     cover_image = ""
     cover_alt = ""
-    if SOURCE_IMAGE_REUSE_AUTHORIZED:
+    cover_credit = ""
+    editorial_cover = article.get("editorial_cover_image")
+    if isinstance(editorial_cover, dict):
+        from image_finder import is_license_allowed
+        if (
+            editorial_cover.get("rights_status") != "license_metadata_checked"
+            or not is_license_allowed(clean(editorial_cover.get("license")))
+            or not clean(editorial_cover.get("url")).startswith("https://")
+        ):
+            raise ValueError("Ảnh đại diện không đạt kiểm tra giấy phép hoặc URL.")
+        cover_image = clean(editorial_cover.get("url"))
+        cover_alt = clean(editorial_cover.get("alt") or title)[:300]
+        cover_credit = _cover_credit(editorial_cover)
+    elif SOURCE_IMAGE_REUSE_AUTHORIZED:
         cover_image = clean(article.get("source_image_url"))
         if not cover_image and images:
             cover_image = clean(images[0].get("url"))
@@ -244,6 +337,9 @@ def build_site_payload(article: dict, draft: dict) -> dict:
             cover_alt = clean(images[0].get("alt") or images[0].get("caption") or title)[:300]
         else:
             cover_alt = title[:300]
+
+    if not cover_image:
+        raise ValueError("Không xuất bản bài viết khi thiếu ảnh đại diện hợp lệ.")
 
     tags = []
     tags.extend(_parse_list(draft.get("primary_keyword")))
@@ -278,6 +374,7 @@ def build_site_payload(article: dict, draft: dict) -> dict:
         "contentHtml": content_html,
         "coverImage": cover_image,
         "coverAlt": cover_alt,
+        "coverCredit": cover_credit,
         "category": category,
         "tags": final_tags,
         "sourceUrl": source_url,
@@ -352,7 +449,16 @@ def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, f
         # status=published. The API only promotes a draft when its auto-publish
         # switch is enabled and the authenticated client requests publication.
 
-    payload = build_site_payload(article, draft)
+    try:
+        if not SOURCE_IMAGE_REUSE_AUTHORIZED:
+            selected_cover = _ensure_editorial_cover_image(article, target_db)
+            if not selected_cover:
+                raise RuntimeError("Không tìm được ảnh đại diện phù hợp có giấy phép sử dụng; bài được giữ lại, chưa xuất bản.")
+        payload = build_site_payload(article, draft)
+    except Exception as exc:
+        _record_sync(target_db, source_url, status="failed", error=f"Cover image: {type(exc).__name__}: {clean(exc)[:700]}")
+        raise
+
     try:
         response = requests.post(_endpoint(), headers=_headers(), json=payload, timeout=(8, SITE_API_TIMEOUT))
     except requests.RequestException as exc:
@@ -476,7 +582,10 @@ def list_pending_drafts(db_path: str | None = None, limit: int = 3):
     with sqlite3.connect(target_db, timeout=30) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("""
-            SELECT a.* FROM articles a
+            SELECT a.*, t.destination_country, t.destination_city, t.primary_category,
+                   t.categories_json AS topic_categories_json
+            FROM articles a
+            LEFT JOIN article_taxonomy t ON t.source_url=a.source_url
             LEFT JOIN website_sync s ON s.source_url=a.source_url
             WHERE COALESCE(a.seo_title,'')<>'' AND COALESCE(a.seo_content,'')<>''
               AND a.status NOT IN ('published','duplicate','canonical_alias','duplicate_title')
