@@ -126,3 +126,14 @@ jobs:
           path: crawler/logs/daily-crawl.log
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Send publication email and add run summary
+        if: always()
+        working-directory: crawler
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+          REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
+          JOB_STATUS: ${{ job.status }}
+        run: python send_daily_report.py --job-status "$JOB_STATUS"
+
