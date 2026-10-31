@@ -216,7 +216,7 @@ export async function GET(request: Request) {
         AND COALESCE(BTRIM(cover_image), '') = ''
         AND source_url IS NOT NULL
         AND BTRIM(source_url) <> ''
-      ORDER BY published_at ASC NULLS LAST, created_at ASC
+      ORDER BY random()
       LIMIT ${limit}
     `;
     return NextResponse.json({ posts });
@@ -224,7 +224,7 @@ export async function GET(request: Request) {
 
   const sourceUrl = (url.searchParams.get("sourceUrl") || "").trim();
   if (!sourceUrl) {
-    return NextResponse.json({ error: "Thiếu query sourceUrl hoặc health=1." }, { status: 400 });
+    return NextResponse.json({ error: "Thiếu query sourceUrl, missingCover=1 hoặc health=1." }, { status: 400 });
   }
 
   const rows = await db<{ id: string; source_url: string | null; slug: string; status: PostStatus; published_at: Date | null }[]>`
