@@ -91,8 +91,17 @@ def main():
     image_backfill_limit = _env_int("IMAGE_BACKFILL_PER_RUN", 5, minimum=1, maximum=25)
     image_backfill = site_publisher.backfill_missing_cover_images(db_path, limit=image_backfill_limit)
     log.info(
-        "Bù ảnh bài cũ: đã kiểm tra %(checked)s, cập nhật %(updated)s, chưa tìm được %(unmatched)s, lỗi %(failed)s.",
+        "Bù ảnh bài thiếu: đã kiểm tra %(checked)s, cập nhật %(updated)s, chưa tìm được %(unmatched)s, lỗi %(failed)s.",
         image_backfill,
+    )
+
+    cover_recheck_limit = _env_int("IMAGE_RECHECK_PER_RUN", 2, minimum=1, maximum=10)
+    cover_recheck = site_publisher.recheck_published_cover_images(
+        db_path, limit=cover_recheck_limit, article_extractor=bot.extract_article_metadata
+    )
+    log.info(
+        "Rà ảnh bài đã xuất bản: kiểm tra %(checked)s, thay ảnh %(updated)s, chưa tìm được ảnh khớp %(unmatched)s, lỗi %(failed)s.",
+        cover_recheck,
     )
 
     recovered_published = 0
@@ -207,6 +216,10 @@ def main():
         "image_backfill_updated": int(image_backfill.get("updated", 0) or 0),
         "image_backfill_unmatched": int(image_backfill.get("unmatched", 0) or 0),
         "image_backfill_failed": int(image_backfill.get("failed", 0) or 0),
+        "cover_recheck_checked": int(cover_recheck.get("checked", 0) or 0),
+        "cover_recheck_updated": int(cover_recheck.get("updated", 0) or 0),
+        "cover_recheck_unmatched": int(cover_recheck.get("unmatched", 0) or 0),
+        "cover_recheck_failed": int(cover_recheck.get("failed", 0) or 0),
         "duration_seconds": duration_seconds,
         "ai_quota_stop": ai_quota_stop,
         "site_url": site_publisher.SITE_URL,

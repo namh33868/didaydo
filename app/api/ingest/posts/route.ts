@@ -9,6 +9,20 @@ import { ensureDestination, ensureTopic } from "@/lib/taxonomy";
 
 export const runtime = "nodejs";
 
+let coverReviewSchemaPromise: Promise<void> | null = null;
+
+async function ensureCoverReviewSchema() {
+  if (!coverReviewSchemaPromise) {
+    coverReviewSchemaPromise = (async () => {
+      await db`ALTER TABLE posts ADD COLUMN IF NOT EXISTS cover_recheck_attempted_at TIMESTAMPTZ`;
+      await db`CREATE INDEX IF NOT EXISTS posts_cover_recheck_attempted_idx ON posts (cover_recheck_attempted_at ASC NULLS FIRST)`;
+    })().catch((error) => {
+      coverReviewSchemaPromise = null;
+      throw error;
+    });
+  }
+  await coverReviewSchemaPromise;
+}
 type PostStatus = "draft" | "published" | "archived";
 
 type ExistingPost = {
@@ -87,6 +101,7 @@ async function uniqueSlug(requestedSlug: string, existingId?: string) {
 }
 
 async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
+  await ensureCoverReviewSchema();
   const sourceUrl = input.sourceUrl?.trim() || null;
   const existing = sourceUrl
     ? (
@@ -158,7 +173,9 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
         category_name = ${categoryName}, category_slug = ${categorySlug},
         country_id = ${countryId}, country_name = ${storedCountryName}, country_slug = ${countrySlug},
         destination_id = ${destinationId}, destination_name = ${storedDestinationName}, destination_slug = ${destinationSlug},
-        tags = ${tags}, status = ${status}, featured = ${featured}, author_name = ${authorName},
+        tags = ${tags}, status = ${status}, featured = ${featured},
+        cover_recheck_attempted_at = CASE WHEN ${Boolean(input.coverImage?.trim())} THEN NOW() ELSE cover_recheck_attempted_at END,
+        author_name = ${authorName},
         source_name = ${sourceName}, seo_title = ${seoTitle}, seo_description = ${seoDescription},
         published_at = ${publishedAt}, updated_at = NOW()
       WHERE id = ${existing.id} RETURNING id, slug, status
@@ -172,12 +189,12 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
     INSERT INTO posts (
       title, slug, excerpt, content_html, cover_image, cover_alt, cover_credit,
       category_name, category_slug, country_id, country_name, country_slug,
-      destination_id, destination_name, destination_slug, tags, status, featured,
+      destination_id, destination_name, destination_slug, tags, status, featured, cover_recheck_attempted_at,
       author_name, source_url, source_name, seo_title, seo_description, published_at
     ) VALUES (
       ${input.title}, ${safeSlug}, ${excerpt}, ${contentHtml}, ${coverImage}, ${coverAlt}, ${coverCredit},
       ${categoryName}, ${categorySlug}, ${countryId}, ${storedCountryName}, ${countrySlug},
-      ${destinationId}, ${storedDestinationName}, ${destinationSlug}, ${tags}, ${status}, ${featured},
+      ${destinationId}, ${storedDestinationName}, ${destinationSlug}, ${tags}, ${status}, ${featured}, ${input.coverImage?.trim() ? new Date() : null},
       ${authorName}, ${sourceUrl}, ${sourceName}, ${seoTitle}, ${seoDescription}, ${publishedAt}
     )
     RETURNING id, slug, status
@@ -222,9 +239,41 @@ export async function GET(request: Request) {
     return NextResponse.json({ posts });
   }
 
+  if (url.searchParams.get("recheckCovers") === "1") {
+    // Additive migration for existing Neon databases; unmatched articles retry weekly.
+    await ensureCoverReviewSchema();
+    const requestedLimit = Number(url.searchParams.get("limit") || "3");
+    const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(Math.trunc(requestedLimit), 10)) : 3;
+    const posts = await db<{
+      id: string; title: string; excerpt: string; content_html: string; cover_image: string;
+      category_name: string; country_name: string; destination_name: string; source_url: string;
+      source_name: string; seo_title: string; seo_description: string; tags: string[];
+    }[]>`
+      SELECT id, title, excerpt, content_html, cover_image, category_name, country_name,
+        destination_name, source_url, source_name, seo_title, seo_description, tags
+      FROM posts
+      WHERE status = 'published'
+        AND COALESCE(BTRIM(cover_image), '') <> ''
+        AND source_url IS NOT NULL AND BTRIM(source_url) <> ''
+        AND (
+          cover_recheck_attempted_at IS NULL
+          OR cover_recheck_attempted_at < NOW() - INTERVAL '7 days'
+        )
+      ORDER BY cover_recheck_attempted_at ASC NULLS FIRST, published_at ASC NULLS LAST
+      LIMIT ${limit}
+    `;
+    if (posts.length) {
+      const ids = posts.map((post) => post.id);
+      await db`
+        UPDATE posts SET cover_recheck_attempted_at = NOW()
+        WHERE id = ANY(${ids}::uuid[])
+      `;
+    }
+    return NextResponse.json({ posts });
+  }
   const sourceUrl = (url.searchParams.get("sourceUrl") || "").trim();
   if (!sourceUrl) {
-    return NextResponse.json({ error: "Thiếu query sourceUrl, missingCover=1 hoặc health=1." }, { status: 400 });
+    return NextResponse.json({ error: "Thiếu query sourceUrl, missingCover=1, recheckCovers=1 hoặc health=1." }, { status: 400 });
   }
 
   const rows = await db<{ id: string; source_url: string | null; slug: string; status: PostStatus; published_at: Date | null }[]>`

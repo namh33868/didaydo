@@ -28,6 +28,8 @@ jobs:
       SITE_URL: ${{ secrets.SITE_URL }}
       SITE_INGEST_API_KEY: ${{ secrets.SITE_INGEST_API_KEY }}
       SITE_API_TIMEOUT_SECONDS: "30"
+      IMAGE_RECHECK_PER_RUN: "2"
+      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
       SOURCE_CONTEXT_MODE: "smart"
       SOURCE_IMAGE_REUSE_AUTHORIZED: "false"
       ALLOW_FULL_TEXT_STORAGE: "false"
@@ -107,6 +109,7 @@ jobs:
         run: |
           set -o pipefail
           python -m py_compile main.py site_publisher.py image_finder.py sync_to_site.py daily_runner.py send_daily_report.py
+          python -m unittest discover -s tests -p "test_*.py" -v
           python -c "from bs4 import BeautifulSoup; root=BeautifulSoup('<rss><channel><item><title>parser-check</title></item></channel></rss>', 'xml'); assert root.find('item') and root.find('title').text == 'parser-check'; print('XML RSS parser OK')"
           python - <<'PY'
           import logging

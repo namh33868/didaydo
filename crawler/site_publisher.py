@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 log = logging.getLogger("travel-content-bot.site-publisher")
@@ -244,10 +245,16 @@ def _cover_credit(image: dict) -> str:
     return " · ".join(parts)[:1200]
 
 
-def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
-    """Reuse a cached, license-checked cover or find one; persist it for safe retries."""
+def _ensure_editorial_cover_image(article: dict, db_path: str, draft: dict | None = None) -> dict | None:
+    """Recheck cached relevance and search using the source photo, caption and article text."""
     from image_finder import find_cover_image, is_license_allowed, verify_image_url
 
+    search_article = dict(article)
+    if isinstance(draft, dict):
+        search_article["visual_search_title"] = clean(draft.get("seo_title") or draft.get("title") or article.get("source_title"))
+        search_article["visual_search_summary"] = clean(draft.get("seo_description") or draft.get("meta_description") or article.get("source_summary"))
+        body_text = BeautifulSoup(str(draft.get("seo_content") or ""), "html.parser").get_text(" ", strip=True)
+        search_article["visual_search_body"] = clean(body_text)[:3500]
     source_url = normalize_source_url(article.get("source_url", ""))
     stored_images = _stored_image_list(article)
     if source_url:
@@ -279,6 +286,8 @@ def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
             and is_license_allowed(clean(existing.get("license")))
             and clean(existing.get("source_page_url")).startswith("https://")
             and clean(existing.get("license_url")).startswith("https://")
+            and existing.get("relevance_verified") is True
+            and existing.get("image_scope") in {"exact_destination", "topic_specific"}
             and verify_image_url(existing.get("url", ""))
         )
         if valid:
@@ -307,7 +316,7 @@ def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
                                      if isinstance(item, dict) and clean(item.get("url")).startswith("https://"))
         except sqlite3.Error as exc:
             log.warning("Không đọc được lịch sử ảnh đã dùng (%s); tiếp tục tìm ảnh mới", type(exc).__name__)
-        selected = find_cover_image(article, exclude_urls=used_urls)
+        selected = find_cover_image(search_article, exclude_urls=used_urls)
     if not selected:
         return None
 
@@ -550,6 +559,139 @@ def _record_sync(db_path: str, source_url: str, *, post_id=None, slug=None, stat
         conn.commit()
 
 
+
+
+def recheck_published_cover_images(
+    db_path: str | None = None,
+    limit: int = 3,
+    article_extractor=None,
+) -> dict:
+    """Review a small batch of old published covers against their original article photos."""
+    if not SITE_SYNC_ENABLED or not SITE_URL or not SITE_INGEST_API_KEY:
+        return {"checked": 0, "updated": 0, "unmatched": 0, "failed": 0, "skipped": True}
+    if article_extractor is None:
+        raise ValueError("An article_extractor callback is required for safe source-page inspection.")
+
+    _check_api_ready()
+    maximum = max(1, min(int(limit), 10))
+    try:
+        response = requests.get(
+            _endpoint(),
+            params={"recheckCovers": "1", "limit": maximum},
+            headers=_headers(),
+            timeout=(5, SITE_API_TIMEOUT),
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        log.warning("Không tải được danh sách ảnh cần rà soát (%s)", type(exc).__name__)
+        return {"checked": 0, "updated": 0, "unmatched": 0, "failed": 1, "error": type(exc).__name__}
+
+    posts = data.get("posts") if isinstance(data, dict) else []
+    if not isinstance(posts, list):
+        posts = []
+
+    category_map = {
+        "cẩm nang": "travel-guide",
+        "kinh nghiệm du lịch": "travel-tips",
+        "điểm đến": "travel-guide",
+        "check-in": "things-to-do",
+        "ẩm thực": "food-and-drink",
+        "hotel review": "hotel-review",
+        "lịch trình": "itinerary",
+        "di chuyển": "transport",
+        "văn hóa & địa phương": "culture-local-life",
+        "chi phí & ngân sách": "budget-travel",
+        "tin du lịch": "destination-news",
+    }
+    result = {"checked": len(posts), "updated": 0, "unmatched": 0, "failed": 0, "items": []}
+
+    for post in posts:
+        source_url = normalize_source_url(clean(post.get("source_url")))
+        title = clean(post.get("title"))
+        if not source_url or not title:
+            result["failed"] += 1
+            continue
+        host = urlparse(source_url).hostname or ""
+        item = {
+            "source_url": source_url,
+            "rss_title": title,
+            "rss_summary": clean(post.get("excerpt")),
+            "rss_published_at": "",
+            "rss_categories": [clean(post.get("category_name"))],
+            "rss_image_url": "",
+            "source_id": "",
+            "source_name": clean(post.get("source_name")),
+            "source_homepage": f"https://{host}" if host else "",
+            "source_domain": host,
+            "source_language": "vi",
+            "source_focus": [category_map.get(clean(post.get("category_name")).casefold(), "travel-guide")],
+            "allowed_domains": [host] if host else [],
+            "permission_status": "review_terms_before_commercial_reuse",
+        }
+        try:
+            # Re-fetch the original page to capture its real images, captions and nearby headings.
+            article = article_extractor(item)
+            article["source_url"] = source_url
+            article["source_title"] = title
+            article["source_summary"] = clean(post.get("excerpt"))
+            article["destination_country"] = clean(post.get("country_name")) or article.get("destination_country") or ""
+            article["destination_city"] = clean(post.get("destination_name")) or article.get("destination_city") or ""
+            category_name = clean(post.get("category_name")).casefold()
+            article["primary_category"] = category_map.get(category_name, article.get("primary_category") or "travel-guide")
+            article["topic_categories"] = [article["primary_category"]]
+            article["top_level_section"] = {
+                "điểm đến": "Thế giới",
+                "hotel review": "Khách sạn & lưu trú",
+                "check-in": "Điểm check-in",
+            }.get(category_name, clean(post.get("category_name")) or "Cẩm nang")
+            article["destination_countries"] = [article["destination_country"]] if article["destination_country"] else []
+            article["source_name"] = clean(post.get("source_name")) or article.get("source_name")
+            article["visual_search_title"] = clean(post.get("seo_title") or title)
+            article["visual_search_summary"] = clean(post.get("seo_description") or post.get("excerpt"))
+            draft = {
+                "seo_title": clean(post.get("seo_title") or title),
+                "seo_description": clean(post.get("seo_description") or post.get("excerpt")),
+                "seo_content": clean(post.get("content_html")),
+            }
+            old_url = clean(post.get("cover_image"))
+            selected_cover = _ensure_editorial_cover_image(article, db_path or DATABASE_PATH, draft=draft)
+            if not selected_cover:
+                result["unmatched"] += 1
+                result["items"].append({"title": title[:160], "status": "no_relevant_licensed_match"})
+                continue
+            if clean(selected_cover.get("url")) == old_url:
+                result["items"].append({"title": title[:160], "status": "already_matching"})
+                continue
+
+            payload = build_site_payload(article, draft)
+            payload["status"] = "published"
+            update_response = requests.post(
+                _endpoint(), headers=_headers(), json=payload, timeout=(8, SITE_API_TIMEOUT)
+            )
+            try:
+                update_data = update_response.json()
+            except ValueError:
+                update_data = {}
+            if not update_response.ok or not update_data.get("success") or int(update_data.get("failed", 0) or 0) > 0:
+                raise RuntimeError(clean(update_data.get("error") or update_response.reason or "API update failed")[:300])
+
+            result["updated"] += 1
+            result["items"].append({
+                "title": title[:160],
+                "status": "updated",
+                "provider": selected_cover.get("source_name"),
+                "scope": selected_cover.get("image_scope"),
+            })
+            log.info("Đã thay ảnh bài cũ bằng ảnh khớp đề tài hơn: %s | %s", title[:100], selected_cover.get("source_name"))
+        except Exception as exc:
+            result["failed"] += 1
+            result["items"].append({"title": title[:160], "status": "failed", "error": type(exc).__name__})
+            log.warning("Không rà được ảnh bài cũ '%s' (%s)", title[:100], type(exc).__name__)
+
+    return result
+
+
 def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, force: bool = False) -> dict:
     """Idempotently send one complete AI article to the website for publication."""
     if not SITE_SYNC_ENABLED:
@@ -596,7 +738,7 @@ def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, f
 
     try:
         if not SOURCE_IMAGE_REUSE_AUTHORIZED:
-            selected_cover = _ensure_editorial_cover_image(article, target_db)
+            selected_cover = _ensure_editorial_cover_image(article, target_db, draft=draft)
             if not selected_cover:
                 raise RuntimeError("Không tìm được ảnh đại diện phù hợp có giấy phép sử dụng; bài được giữ lại, chưa xuất bản.")
         payload = build_site_payload(article, draft)

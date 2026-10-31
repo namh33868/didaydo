@@ -1,18 +1,20 @@
 """Find SEO cover images from openly licensed libraries with strict location matching.
 
-Only CC0/Public Domain and CC BY/CC BY-SA images are considered. Location-specific
-matches require the place name in the image's own title, description, or tags. When
-that cannot be established, the fallback is explicitly labelled as a generic topic
-illustration and never claims to depict the destination.
+Only CC0/Public Domain and CC BY/CC-SA images are considered. Original article images
+are used as visual-search references, never copied as reusable files. There is no
+generic-category fallback: unmatched articles are held for review.
 """
 from __future__ import annotations
 
 import html
+import ipaddress
+import json
 import logging
 import os
 import re
+import socket
 import unicodedata
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -21,10 +23,13 @@ log = logging.getLogger("travel-content-bot.images")
 
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 OPENVERSE_API = "https://api.openverse.org/v1/images/"
+SERPAPI_API = "https://serpapi.com/search.json"
 REQUEST_TIMEOUT = (5, 18)
 MIN_WIDTH = 1200
 MIN_HEIGHT = 600
 MAX_RESULTS = 30
+GOOGLE_RESULTS_LIMIT = 8
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "").strip()
 
 _USER_AGENT = os.getenv(
     "CRAWLER_USER_AGENT",
@@ -73,7 +78,7 @@ def is_license_allowed(license_name: str) -> bool:
     value = _normalise(license_name)
     if not value:
         return False
-    if any(token in value.split() for token in ("nc", "nd", "noncommercial", "noderivatives")):
+    if re.search(r"\b(nc|nd|non ?commercial|no derivatives|noderivatives)\b", value):
         return False
     if "public domain" in value or "public domain mark" in value or "cc0" in value or value == "pdm":
         return True
@@ -208,6 +213,303 @@ def _metadata_text(*parts) -> str:
 
 def _matches_any(text: str, phrases: list[str]) -> list[str]:
     return [phrase for phrase in phrases if _contains_phrase(text, phrase)]
+
+
+_CONTEXT_STOPWORDS = {
+    "the", "and", "for", "with", "from", "this", "that", "your", "you", "are",
+    "best", "top", "guide", "travel", "travelling", "traveling", "trip", "journey",
+    "destination", "tourism", "tourist", "vacation", "holiday", "things", "explore",
+    "discover", "visit", "experience", "experiences", "place", "places", "near",
+    "what", "where", "when", "how", "why", "into", "over", "under", "about",
+    "du", "lich", "di", "den", "cam", "nang", "kinh", "nghiem", "hanh", "trinh",
+    "diem", "noi", "tieng", "dep", "nhat", "nhung", "cac", "mot", "cho", "voi",
+    "tai", "trong", "ngoai", "tren", "duoi", "ngay", "thang", "vietnam", "viet",
+    "nam", "world", "unclassified", "chua", "phan", "loai",
+}
+
+
+def _source_visual_context(article: dict) -> tuple[list[str], list[str]]:
+    """Return image captions/headings and alt text from the original article."""
+    phrases: list[str] = []
+    alt_parts: list[str] = []
+    images = article.get("source_images") or []
+    if not isinstance(images, list):
+        return phrases, alt_parts
+    for item in images[:20]:
+        if not isinstance(item, dict):
+            continue
+        if item.get("placement_source") in {"og:image_fallback", "rss_image_fallback"} or item.get("is_cover") is True or item.get("image_id") == "COVER_LIBRARY":
+            continue
+        caption = _plain(item.get("caption"))
+        heading = _plain(item.get("nearby_heading"))
+        alt = _plain(item.get("alt"))
+        for value in (caption, heading):
+            if value and len(value) >= 5 and value.casefold() not in {x.casefold() for x in phrases}:
+                phrases.append(value[:180])
+        if alt:
+            alt_parts.append(alt[:180])
+    return phrases[:8], alt_parts[:8]
+
+
+def _article_context_terms(article: dict) -> list[str]:
+    source_phrases, alt_parts = _source_visual_context(article)
+    raw = _metadata_text(
+        article.get("visual_search_title"), article.get("source_title"), article.get("seo_title"),
+        article.get("visual_search_summary"), article.get("source_summary"), article.get("seo_description"),
+        article.get("visual_search_body"), article.get("source_meta_keywords"), article.get("visual_search_keywords"),
+        *source_phrases, *alt_parts,
+    )
+    location_terms = set(_normalise(_metadata_text(*_destination_terms(article), *_country_terms(article))).split())
+    terms = []
+    for word in _normalise(raw).split():
+        if len(word) < 3 or word in _CONTEXT_STOPWORDS or word in location_terms or word.isdigit():
+            continue
+        if word not in terms:
+            terms.append(word)
+        if len(terms) >= 28:
+            break
+    return terms
+
+
+def _article_context_phrases(article: dict) -> list[str]:
+    source_phrases, alt_parts = _source_visual_context(article)
+    title = _plain(article.get("visual_search_title") or article.get("source_title") or article.get("seo_title"))
+    output = []
+    for value in source_phrases + alt_parts + ([title] if title else []):
+        tokens = [word for word in _normalise(value).split() if len(word) >= 3 and word not in _CONTEXT_STOPWORDS]
+        phrase = " ".join(tokens[:8])
+        if len(tokens) >= 2 and phrase and phrase not in output:
+            output.append(phrase)
+    return output[:6]
+
+
+def _best_original_image(article: dict) -> dict | None:
+    """Choose a descriptive photo from the source article for Google Lens."""
+    images = article.get("source_images") or []
+    if not isinstance(images, list):
+        return None
+    title_terms = set(_article_context_terms(article))
+    choices = []
+    for item in images[:20]:
+        if not isinstance(item, dict):
+            continue
+        if item.get("placement_source") in {"og:image_fallback", "rss_image_fallback"} or item.get("is_cover") is True or item.get("image_id") == "COVER_LIBRARY":
+            continue
+        if not _plain(item.get("url")).startswith("https://"):
+            continue
+        context = _normalise(" ".join((
+            _plain(item.get("caption")), _plain(item.get("nearby_heading")), _plain(item.get("alt")),
+        )))
+        overlap = sum(1 for term in title_terms if term in context.split())
+        score = overlap * 10 + (12 if item.get("caption") else 0) + (8 if item.get("nearby_heading") else 0)
+        choices.append((score, item))
+    if not choices:
+        return None
+    choices.sort(key=lambda pair: pair[0], reverse=True)
+    return choices[0][1]
+
+
+def _public_https_url(value: str) -> bool:
+    """Reject local/private destinations before fetching a Google result's license page."""
+    try:
+        parsed = urlsplit(_plain(value))
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return False
+        host = parsed.hostname.rstrip(".").lower()
+        if host in {"localhost", "localhost.localdomain"} or host.endswith((".local", ".internal")):
+            return False
+        try:
+            addresses = [ipaddress.ip_address(host)]
+        except ValueError:
+            addresses = [ipaddress.ip_address(info[4][0]) for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)]
+        return bool(addresses) and all(address.is_global for address in addresses)
+    except (ValueError, OSError):
+        return False
+
+
+def _license_from_landing_page(page_url: str) -> dict | None:
+    """Require image-specific license and creator evidence on a Google-discovered result page."""
+    if not _public_https_url(page_url):
+        return None
+    try:
+        response = requests.get(
+            page_url,
+            headers={"User-Agent": _USER_AGENT, "Range": "bytes=0-524287"},
+            stream=True, allow_redirects=False, timeout=REQUEST_TIMEOUT,
+        )
+        try:
+            if response.status_code in {301, 302, 303, 307, 308}:
+                location = urljoin(page_url, response.headers.get("Location", ""))
+                if not _public_https_url(location):
+                    return None
+                response.close()
+                response = requests.get(
+                    location,
+                    headers={"User-Agent": _USER_AGENT, "Range": "bytes=0-524287"},
+                    stream=True, allow_redirects=False, timeout=REQUEST_TIMEOUT,
+                )
+            if response.status_code != 200 or "html" not in (response.headers.get("Content-Type") or "").lower():
+                return None
+            chunks, total = [], 0
+            for chunk in response.iter_content(chunk_size=16384):
+                if not chunk:
+                    continue
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= 524288:
+                    break
+            raw_html = b"".join(chunks).decode(response.encoding or "utf-8", errors="replace")
+        finally:
+            response.close()
+    except requests.RequestException:
+        return None
+
+    soup = BeautifulSoup(raw_html, "html.parser")
+    license_values: list[tuple[str, str]] = []
+    creator = ""
+
+    # Only image-specific metadata is accepted. A page-wide copyright notice or
+    # the article's author is not evidence of the photographer's license.
+    for tag in soup.find_all("meta"):
+        key = _normalise(tag.get("name") or tag.get("property") or "")
+        value = _plain(tag.get("content"))
+        if not value:
+            continue
+        if key in {"image license", "photo license", "image rights", "photo rights", "og image license"}:
+            license_values.append((value, value if value.startswith("https://") else ""))
+        if key in {"image creator", "photo creator", "photographer", "image photographer", "photo credit"} and not creator:
+            creator = value[:180]
+
+    def visit_jsonld(node):
+        nonlocal creator
+        if isinstance(node, list):
+            for child in node:
+                visit_jsonld(child)
+        elif isinstance(node, dict):
+            raw_type = node.get("@type") or []
+            types = {str(value).casefold().rsplit("/", 1)[-1].rsplit("#", 1)[-1] for value in (raw_type if isinstance(raw_type, list) else [raw_type])}
+            is_image_object = "imageobject" in types
+            if is_image_object:
+                license_value = node.get("license")
+                if isinstance(license_value, str):
+                    license_values.append((license_value, license_value if license_value.startswith("https://") else ""))
+                elif isinstance(license_value, dict):
+                    url = _plain(license_value.get("@id") or license_value.get("url"))
+                    name = _plain(license_value.get("name") or url)
+                    if url or name:
+                        license_values.append((name, url if url.startswith("https://") else ""))
+                creator_value = node.get("creator")
+                if not creator:
+                    if isinstance(creator_value, dict):
+                        creator = _plain(creator_value.get("name"))[:180]
+                    elif isinstance(creator_value, list):
+                        creator = ", ".join(_plain(item.get("name")) for item in creator_value if isinstance(item, dict))[:180]
+                    elif isinstance(creator_value, str):
+                        creator = _plain(creator_value)[:180]
+            for key in ("@graph", "mainEntity", "mainEntityOfPage", "image", "associatedMedia", "primaryImageOfPage"):
+                if key in node:
+                    visit_jsonld(node[key])
+
+    for script in soup.select('script[type="application/ld+json"]'):
+        try:
+            visit_jsonld(json.loads(script.string or script.get_text()))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+
+    for label, url in license_values:
+        combined = _normalise(label)
+        url_norm = _normalise(url)
+        if re.search(r"\b(nc|nd|non commercial|no derivatives)\b", combined + " " + url_norm):
+            continue
+        license_name = ""
+        if "publicdomain zero" in url_norm or "cc0" in combined:
+            license_name = "CC0"
+        elif "publicdomain mark" in url_norm or "public domain mark" in combined:
+            license_name = "Public Domain Mark"
+        else:
+            version = re.search(r"(1 0|2 0|2 5|3 0|4 0)", url_norm + " " + combined)
+            version_text = version.group(1).replace(" ", ".") if version else ""
+            is_by_sa = (
+                "creativecommons org licenses by sa" in url_norm
+                or re.search(r"\bcc by sa\b", combined)
+                or "creative commons attribution share alike" in combined
+            )
+            is_by = (
+                "creativecommons org licenses by" in url_norm
+                or re.search(r"\bcc by\b", combined)
+                or "creative commons attribution" in combined
+            )
+            if version_text and is_by_sa:
+                license_name = "CC BY-SA " + version_text
+            elif version_text and is_by:
+                license_name = "CC BY " + version_text
+        if not license_name or not is_license_allowed(license_name):
+            continue
+        if license_name.startswith(("CC BY", "CC BY-SA")) and not creator:
+            continue
+        canonical_url = {
+            "CC0": "https://creativecommons.org/publicdomain/zero/1.0/",
+            "Public Domain Mark": "https://creativecommons.org/publicdomain/mark/1.0/",
+        }.get(license_name)
+        if license_name.startswith("CC BY-SA "):
+            canonical_url = "https://creativecommons.org/licenses/by-sa/" + license_name.removeprefix("CC BY-SA ") + "/"
+        elif license_name.startswith("CC BY "):
+            canonical_url = "https://creativecommons.org/licenses/by/" + license_name.removeprefix("CC BY ") + "/"
+        if canonical_url:
+            return {"license": license_name, "license_url": canonical_url, "creator": creator or "Public domain"}
+    return None
+
+
+def _google_visual_candidates(article: dict, query: str) -> list[dict]:
+    """Use Google Lens through SerpApi; every visual match still needs explicit license proof."""
+    if not SERPAPI_API_KEY:
+        return []
+    reference = _best_original_image(article)
+    params = {
+        "engine": "google_lens" if reference else "google_images",
+        "api_key": SERPAPI_API_KEY,
+        "hl": "vi",
+        "q": query,
+    }
+    if reference:
+        params["url"] = _plain(reference.get("url"))
+        params["type"] = "visual_matches"
+    else:
+        params["tbs"] = "itp:photo,sur:cl,isz:l"
+    try:
+        response = requests.get(SERPAPI_API, params=params, headers={"User-Agent": _USER_AGENT}, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        log.warning("Google visual search unavailable (%s)", type(exc).__name__)
+        return []
+
+    results = data.get("visual_matches") if reference else data.get("images_results")
+    output = []
+    for item in (results or [])[:GOOGLE_RESULTS_LIMIT]:
+        landing_url = _plain(item.get("link"))
+        image_url = _plain(item.get("image") or item.get("original"))
+        if not _public_https_url(landing_url) or not _public_https_url(image_url):
+            continue
+        width = item.get("image_width") or item.get("original_width") or 0
+        height = item.get("image_height") or item.get("original_height") or 0
+        if width and height and not _image_dimensions_ok(width, height):
+            continue
+        rights = _license_from_landing_page(landing_url)
+        if not rights:
+            continue
+        output.append({
+            "visual_reference_match": bool(reference),
+            "url": image_url, "title": _plain(item.get("title")),
+            "description": _plain(item.get("source") or item.get("title")),
+            "tags_text": _plain(item.get("source") or ""),
+            "creator": rights["creator"], "creator_url": "",
+            "license": rights["license"], "license_url": rights["license_url"],
+            "source_page_url": landing_url,
+            "provider": "Google Lens / SerpApi" if reference else "Google Images / SerpApi",
+            "width": width, "height": height,
+        })
+    return output
 
 
 def _image_dimensions_ok(width, height) -> bool:
@@ -382,30 +684,40 @@ def _openverse_candidates(query: str) -> list[dict]:
 
 
 def _rank_candidates(candidates: list[dict], place_terms: list[str], country_terms: list[str],
-                     topic_terms: list[str], *, require_place: bool, require_country: bool = False) -> list[dict]:
+                     topic_terms: list[str], *, require_place: bool, require_country: bool = False,
+                     context_terms: list[str] | None = None,
+                     context_phrases: list[str] | None = None,
+                     require_context: bool = False) -> list[dict]:
     ranked = []
+    context_terms = context_terms or []
+    context_phrases = context_phrases or []
     for candidate in candidates:
-        metadata = _metadata_text(
-            candidate.get("title"), candidate.get("description"), candidate.get("tags_text")
-        )
+        metadata = _metadata_text(candidate.get("title"), candidate.get("description"), candidate.get("tags_text"))
         place_matches = _matches_any(metadata, place_terms)
         country_matches = _matches_any(metadata, country_terms)
         topic_matches = _matches_any(metadata, topic_terms)
-        # A destination match alone is not enough: the image must also fit the
-        # article topic (for example, a Ha Long hotel post must not get a random bay view).
-        if require_place and (not place_matches or not topic_matches):
+        context_matches = [term for term in context_terms if _contains_phrase(metadata, term)]
+        phrase_matches = [phrase for phrase in context_phrases if _contains_phrase(metadata, phrase)]
+        visual_reference_match = bool(candidate.get("visual_reference_match"))
+        context_ok = bool(phrase_matches or len(context_matches) >= 2 or (visual_reference_match and len(context_matches) >= 1))
+        if require_context and not context_ok:
             continue
-        if not require_place and not topic_matches:
+        if require_place and not place_matches and not (visual_reference_match and context_ok):
             continue
-        if require_country and country_terms and not country_matches:
+        if require_country and country_terms and not country_matches and not (visual_reference_match and context_ok):
             continue
-        # Exact place evidence outranks broad country/topic matches.
-        score = (100 if place_matches else 0) + (8 if country_matches else 0) + min(12, len(topic_matches) * 3)
+        if topic_terms and not topic_matches and not context_ok:
+            continue
+        score = (100 if place_matches else 0) + (10 if country_matches else 0)
+        score += min(16, len(topic_matches) * 3) + min(40, len(context_matches) * 8)
+        score += 60 if phrase_matches else 0
         score += min(4, int(candidate.get("width", 0) or 0) // 1000)
         candidate = dict(candidate)
         candidate["_score"] = score
         candidate["_place_match"] = place_matches[0] if place_matches else ""
         candidate["_country_match"] = country_matches[0] if country_matches else ""
+        candidate["_context_matches"] = context_matches[:8]
+        candidate["_context_phrase_match"] = phrase_matches[0] if phrase_matches else ""
         ranked.append(candidate)
     return sorted(ranked, key=lambda item: item.get("_score", 0), reverse=True)
 
@@ -414,18 +726,17 @@ def _make_cover(candidate: dict, article: dict, scope: str) -> dict:
     city = _plain(article.get("destination_city") or "")
     country = _plain(article.get("destination_country") or "")
     topic = _topic(article)
+    image_title = _plain(candidate.get("title") or "")
     if scope == "exact_destination":
         label = ", ".join(part for part in (city, country) if part)
-        alt = f"{label} – {candidate.get('title') or topic['label']}"[:300]
-    elif scope == "country_topic":
-        alt = f"Ảnh minh họa {topic['label']} tại {country}"[:300]
+        alt = f"{label} – {image_title or topic['label']}"[:300]
     else:
-        alt = f"Ảnh minh họa {topic['label']}"[:300]
+        alt = image_title or _plain(article.get("visual_search_title") or article.get("source_title"))[:300]
     return {
         "image_id": "COVER_LIBRARY",
         "url": candidate["url"],
         "alt": alt,
-        "caption": _plain(candidate.get("title"))[:400],
+        "caption": image_title[:400],
         "credit": _plain(candidate.get("creator"))[:180],
         "credit_source": candidate.get("provider"),
         "source_name": candidate.get("provider"),
@@ -436,6 +747,10 @@ def _make_cover(candidate: dict, article: dict, scope: str) -> dict:
         "width": candidate.get("width"),
         "height": candidate.get("height"),
         "rights_status": "license_metadata_checked",
+        "relevance_verified": True,
+        "matched_context_terms": candidate.get("_context_matches") or [],
+        "matched_context_phrase": candidate.get("_context_phrase_match") or None,
+        "search_method": candidate.get("provider"),
         "is_cover": True,
         "image_scope": scope,
         "place_evidence": candidate.get("_place_match") or None,
@@ -453,75 +768,74 @@ def _image_key(url: str) -> str:
         return _plain(url).casefold()
 
 def find_cover_image(article: dict, exclude_urls: set[str] | None = None) -> dict | None:
-    """Return a verified-by-metadata cover, or None; never guess a specific location."""
+    """Find a licensed photo that matches the original article subject and image context."""
     article = article or {}
     place_terms = _destination_terms(article)
     country_terms = _country_terms(article)
     topic = _topic(article)
-    topic_terms = topic["terms"]
-    country = _plain(article.get("destination_country") or "")
+    context_terms = _article_context_terms(article)
+    context_phrases = _article_context_phrases(article)
     excluded = {_image_key(url) for url in (exclude_urls or set()) if url}
+    if len(context_terms) < 2:
+        log.warning("Insufficient article-specific context; refusing generic cover: %s",
+                    _plain(article.get("source_title"))[:150])
+        return None
 
-    place_queries = []
-    if place_terms:
-        primary_place = place_terms[0]
-        place_queries = list(dict.fromkeys([
-            f"{primary_place} {country}".strip(),
-            primary_place,
-        ]))
+    place = " ".join([place_terms[0] if place_terms else "", country_terms[0] if country_terms else ""]).strip()
+    query_phrases = []
+    for phrase in context_phrases:
+        query_phrases.append(" ".join(part for part in (place, phrase) if part))
+    if not query_phrases:
+        title = _plain(article.get("visual_search_title") or article.get("source_title"))
+        summary = _plain(article.get("visual_search_summary") or article.get("source_summary"))
+        query_phrases = [" ".join(part for part in (place, title, summary[:100]) if part)]
+    queries = list(dict.fromkeys(value for value in query_phrases if value))[:3]
 
-    for query in place_queries:
+    if SERPAPI_API_KEY and queries:
+        google_candidates = _google_visual_candidates(article, queries[0])
+        ranked_google = _rank_candidates(
+            google_candidates, place_terms, country_terms, topic["terms"],
+            require_place=bool(place_terms), require_country=bool(country_terms),
+            context_terms=context_terms, context_phrases=context_phrases,
+            require_context=True,
+        )
+        for candidate in ranked_google:
+            if _image_key(candidate.get("url", "")) in excluded:
+                continue
+            if verify_image_url(candidate.get("url", "")):
+                scope = "exact_destination" if candidate.get("_place_match") else "topic_specific"
+                cover = _make_cover(candidate, article, scope)
+                log.info("Google visual-search cover selected: scope=%s title=%s", scope, _plain(candidate.get("title"))[:100])
+                return cover
+
+    # Commons/Openverse remain a fallback, but only for article-specific, licensed matches.
+    # There is deliberately no generic category-only search.
+    for query in queries:
         for provider_name, search_fn in (
             ("Wikimedia Commons", _commons_candidates),
             ("Openverse", _openverse_candidates),
         ):
             try:
                 ranked = _rank_candidates(
-                    search_fn(query), place_terms, country_terms, topic_terms,
-                    require_place=True, require_country=bool(country_terms),
+                    search_fn(query), place_terms, country_terms, topic["terms"],
+                    require_place=bool(place_terms), require_country=bool(country_terms),
+                    context_terms=context_terms, context_phrases=context_phrases,
+                    require_context=True,
                 )
             except (requests.RequestException, ValueError, KeyError) as exc:
-                log.warning("%s location image search failed (%s)", provider_name, type(exc).__name__)
+                log.warning("%s article-specific image search failed (%s)", provider_name, type(exc).__name__)
                 continue
             for candidate in ranked:
                 if _image_key(candidate.get("url", "")) in excluded:
                     continue
                 if verify_image_url(candidate.get("url", "")):
-                    cover = _make_cover(candidate, article, "exact_destination")
-                    log.info("Cover image selected: provider=%s scope=exact_destination place=%s", provider_name, cover.get("place_evidence"))
-                    return cover
-
-    # Fallbacks are intentionally generic. The alt text never says this image depicts
-    # the city when its own metadata cannot prove that exact place.
-    generic_queries = []
-    if country:
-        generic_queries.append(f"{country} {topic['query']}")
-    generic_queries.append(topic["query"])
-    for query in list(dict.fromkeys(generic_queries)):
-        require_country = bool(country_terms and query.startswith(country))
-        for provider_name, search_fn in (
-            ("Wikimedia Commons", _commons_candidates),
-            ("Openverse", _openverse_candidates),
-        ):
-            try:
-                ranked = _rank_candidates(
-                    search_fn(query), [], country_terms, topic_terms,
-                    require_place=False, require_country=require_country,
-                )
-            except (requests.RequestException, ValueError, KeyError) as exc:
-                log.warning("%s topic image search failed (%s)", provider_name, type(exc).__name__)
-                continue
-            for candidate in ranked:
-                if _image_key(candidate.get("url", "")) in excluded:
-                    continue
-                if verify_image_url(candidate.get("url", "")):
-                    scope = "country_topic" if require_country and candidate.get("_country_match") else "topic_generic"
+                    scope = "exact_destination" if candidate.get("_place_match") else "topic_specific"
                     cover = _make_cover(candidate, article, scope)
-                    log.info("Cover image selected: provider=%s scope=%s", provider_name, scope)
+                    log.info("Cover selected: provider=%s scope=%s context=%s", provider_name, scope,
+                             ",".join(candidate.get("_context_matches", [])[:4]))
                     return cover
 
-    log.warning(
-        "No reusable cover image found; article will not be auto-published without a cover: title=%s",
-        _plain(article.get("source_title"))[:160],
-    )
+    log.warning("No sufficiently relevant and licensed cover found; article held: %s",
+                _plain(article.get("source_title"))[:160])
     return None
+
