@@ -108,6 +108,25 @@ jobs:
           set -o pipefail
           python -m py_compile main.py site_publisher.py sync_to_site.py daily_runner.py send_daily_report.py
           python -c "from bs4 import BeautifulSoup; root=BeautifulSoup('<rss><channel><item><title>parser-check</title></item></channel></rss>', 'xml'); assert root.find('item') and root.find('title').text == 'parser-check'; print('XML RSS parser OK')"
+          python - <<'PY'
+          from main import classify_article
+          from site_publisher import _category_for
+
+          cases = [
+              ({"source_title": "Ẩm thực Đà Nẵng: 10 món ngon", "source_url": "https://example.test/food"}, {"source_language": "vi", "source_focus": ["food-and-drink"]}, "food-and-drink", "Ẩm thực"),
+              ({"source_title": "Top 10 Bib Gourmand Noodle Shops to Try in Vietnam", "source_summary": "Local noodles and food in Vietnam", "source_url": "https://example.test/noodles"}, {"source_language": "en", "source_focus": ["food-and-drink"]}, "food-and-drink", "Ẩm thực"),
+              ({"source_title": "The Best Caves in Vietnam", "source_url": "https://example.test/caves"}, {"source_language": "en", "source_focus": ["outdoor-adventure"]}, "outdoor-adventure", "Điểm đến"),
+              ({"source_title": "Tú Làn Lodge: Independent Review", "source_url": "https://example.test/lodge"}, {"source_language": "en", "source_focus": ["hotel-review"]}, "hotel-review", "Hotel review"),
+          ]
+          for article, source, expected_topic, expected_category in cases:
+              classified = classify_article(article, source)
+              assert classified["topic_relevant"], f"Expected relevant article: {article['source_title']}"
+              assert classified["primary_category"] == expected_topic, (article["source_title"], classified["primary_category"])
+              assert _category_for({**article, **classified}) == expected_category, (article["source_title"], _category_for({**article, **classified}))
+          irrelevant = classify_article({"source_title": "Quarterly financial results and market shares", "source_url": "https://example.test/finance"}, {"source_language": "en", "source_focus": ["food-and-drink"]})
+          assert not irrelevant["topic_relevant"], "Unrelated content must be filtered before AI"
+          print("Editorial taxonomy smoke test OK (Vietnamese, food, caves, lodging, off-topic filter)")
+          PY
           python daily_runner.py --limit 10 2>&1 | tee logs/daily-crawl.log
 
       - name: Save crawl history even if the run fails
