@@ -15,7 +15,7 @@ type AdminRole = "admin" | "editor" | "author" | "viewer";
 type SessionInfo = { email: string; fullName: string; role: AdminRole; userId: string | null };
 const roleLabel: Record<AdminRole, string> = { admin: "Quản trị viên", editor: "Biên tập viên", author: "Tác giả", viewer: "Chỉ xem" };
 
-type Editor = Omit<AdminPost, "id" | "publishedAt" | "createdAt"> & { id?: string }
+type Editor = Omit<AdminPost, "id" | "publishedAt" | "createdAt" | "featuredUntil"> & { id?: string }
 type PreviewPost = Editor & { publishedAt?: string | null; createdAt?: string };
 const siteName = process.env.NEXT_PUBLIC_SITE_NAME || "Đi Đây Đó";
 const emptyEditor: Editor = { title: "", slug: "", excerpt: "", contentHtml: "", coverImage: "", coverAlt: "", category: "Cẩm nang", country: "", destination: "", coverCredit: "", tags: [], status: "draft", featured: false, authorName: "Ban biên tập", sourceUrl: "", sourceName: "", seoTitle: "", seoDescription: "" };
@@ -145,7 +145,7 @@ export function AdminPanel() {
     const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
     return dateB - dateA;
   });
-  const featuredCount = publishedPosts.filter((post) => post.featured).length;
+  const featuredCount = publishedPosts.filter((post) => post.featured && !!post.featuredUntil && new Date(post.featuredUntil).getTime() > currentTime).length;
   const featuredChoices = publishedPosts
     .filter((post) => `${post.title} ${post.category} ${post.country} ${post.destination}`.toLowerCase().includes(featuredQuery.toLowerCase()))
     .slice(0, featuredQuery.trim() ? 200 : 60);
@@ -234,7 +234,7 @@ export function AdminPanel() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Không cập nhật được tin nổi bật.");
-      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, featured: data.featured as boolean } : item));
+      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, featured: data.featured as boolean, featuredUntil: (data.featuredUntil as string | null) || null } : item));
       setMessage(featured ? `Đã thêm “${post.title}” vào tin nổi bật.` : `Đã bỏ “${post.title}” khỏi tin nổi bật.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không cập nhật được tin nổi bật.");
@@ -258,17 +258,17 @@ export function AdminPanel() {
       {(message || error) && <div className={`admin-alert ${error ? "is-error" : "is-success"}`}>{error ? <X size={16}/> : <Check size={16}/>} {error || message}<button onClick={() => { setError(""); setMessage(""); }} aria-label="Đóng thông báo"><X size={15}/></button></div>}
       {canPublish && showFeaturedManager && <section className="admin-table-card admin-featured-manager">
         <div className="admin-table-toolbar admin-featured-toolbar">
-          <div><h2>Quản lý tin nổi bật</h2><p>Chọn tối đa 8 bài đã xuất bản để ưu tiên hiển thị trong slide đầu trang.</p></div>
+          <div><h2>Quản lý tin nổi bật</h2><p>Chọn tối đa 8 bài đã xuất bản. Mỗi bài được ưu tiên trong 7 ngày kể từ lúc bật.</p></div>
           <span className={`admin-featured-count ${featuredCount >= 8 ? "is-full" : ""}`}><Star size={15}/>{featuredCount}/8 đã chọn</span>
         </div>
-        <div className="admin-featured-auto-note"><Star size={16}/><p><b>Tự động bổ sung bài mới</b><span>{Math.max(0, 8 - featuredCount)} vị trí còn lại sẽ tự lấy từ các bài mới xuất bản. Khi mày đánh dấu tin nổi bật, bài đó sẽ được ưu tiên trước.</span></p></div>
+        <div className="admin-featured-auto-note"><Star size={16}/><p><b>Tự động bổ sung bài mới</b><span>{Math.max(0, 8 - featuredCount)} vị trí còn lại luôn được lấp bằng bài mới nhất. Tin được chọn sẽ tự hết hạn sau 7 ngày; khi hết hạn, hệ thống bỏ đánh dấu và đưa bài mới nhất lên thay thế.</span></p></div>
         <div className="admin-featured-search-wrap"><label className="admin-search"><Search size={16}/><input value={featuredQuery} onChange={(event) => setFeaturedQuery(event.target.value)} placeholder="Tìm bài đã xuất bản theo tiêu đề, danh mục, điểm đến..." /></label><span>{featuredChoices.length} bài hiển thị / {publishedPosts.length} bài đã xuất bản</span></div>
         <div className="admin-featured-list">
           {featuredChoices.map((post) => <label key={post.id} className={`admin-featured-choice ${post.featured ? "is-featured" : ""}`}>
             <input type="checkbox" className="admin-row-checkbox" checked={post.featured} disabled={featuredBusyId !== null || (!post.featured && featuredCount >= 8)} onChange={(event) => void changeFeatured(post, event.target.checked)} aria-label={`${post.featured ? "Bỏ khỏi" : "Thêm vào"} tin nổi bật: ${post.title}`} />
             <span className="admin-featured-thumb">{post.coverImage ? <img src={post.coverImage} alt="" loading="lazy"/> : <Star size={16}/>}</span>
-            <span className="admin-featured-copy"><b>{post.title}</b><small>{post.category}{post.destination ? ` · ${post.destination}` : post.country ? ` · ${post.country}` : ""}</small><small>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString("vi-VN") : "Đã xuất bản"}</small></span>
-            <span className={`admin-featured-badge ${post.featured ? "is-on" : ""}`}>{post.featured ? "Tin nổi bật" : "Bài mới"}</span>
+            <span className="admin-featured-copy"><b>{post.title}</b><small>{post.category}{post.destination ? ` · ${post.destination}` : post.country ? ` · ${post.country}` : ""}</small><small>{post.publishedAt ? `Đăng ngày ${new Date(post.publishedAt).toLocaleDateString("vi-VN")}` : "Đã xuất bản"}</small>{post.featured && post.featuredUntil && <small>Ưu tiên đến {new Date(post.featuredUntil).toLocaleDateString("vi-VN")}</small>}</span>
+            <span className={`admin-featured-badge ${post.featured ? "is-on" : ""}`}>{post.featured ? "Nổi bật 7 ngày" : "Bài mới"}</span>
           </label>)}
           {featuredChoices.length === 0 && <p className="admin-featured-empty">Không tìm thấy bài đã xuất bản phù hợp.</p>}
         </div>
@@ -322,7 +322,7 @@ export function AdminPanel() {
             <section className="editor-panel-card editor-side-card editor-publish-card">
               <div className="editor-side-card-heading"><h3>Xuất bản</h3><span className={`status-pill status-${selected.status}`}>{selected.status === "published" ? "Đã xuất bản" : selected.status === "draft" ? "Bản nháp" : "Đã lưu trữ"}</span></div>
               {currentUser?.role === "author" ? <div className="permission-author-note">Bài của tác giả luôn được lưu dưới dạng <b>bản nháp</b> để biên tập viên duyệt trước khi xuất bản.</div> : <label className="editor-field"><span>Trạng thái</span><select value={selected.status} onChange={(e) => update("status", e.target.value as Editor["status"])}><option value="draft">Bản nháp</option><option value="published">Đã xuất bản</option><option value="archived">Lưu trữ</option></select></label>}
-              {currentUser?.role !== "author" && <label className="editor-featured"><input type="checkbox" checked={selected.featured} disabled={!selected.featured && featuredCount >= 8} onChange={(e) => update("featured", e.target.checked)}/><span><b>Đưa lên bài nổi bật</b><small>{!selected.featured && featuredCount >= 8 ? "Đã chọn đủ 8 tin. Hãy bỏ chọn một tin trong mục quản lý nổi bật." : "Ưu tiên hiển thị trên trang chủ; slide sẽ tự bổ sung bài mới nếu chưa đủ 8 tin."}</small></span></label>}
+              {currentUser?.role !== "author" && <label className="editor-featured"><input type="checkbox" checked={selected.featured} disabled={!selected.featured && featuredCount >= 8} onChange={(e) => update("featured", e.target.checked)}/><span><b>Đưa lên bài nổi bật</b><small>{!selected.featured && featuredCount >= 8 ? "Đã chọn đủ 8 tin. Hãy bỏ chọn một tin trong mục quản lý nổi bật." : "Được ưu tiên trên slide trong 7 ngày. Hết hạn sẽ tự bỏ đánh dấu và nhường chỗ cho bài mới nhất."}</small></span></label>}
               {canPublish && <button className="button-primary editor-publish-button" onClick={() => void save("published")} disabled={busy || selected.title.trim().length < 3}><Save size={15}/>{busy ? "Đang lưu..." : selected.id && selected.status === "published" ? "Cập nhật bài viết" : "Xuất bản"}</button>}
               <button className="button-secondary editor-draft-button" onClick={() => void save("draft")} disabled={busy || selected.title.trim().length < 3}>{busy ? "Đang lưu..." : "Lưu thành bản nháp"}</button>
             </section>
