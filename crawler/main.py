@@ -641,8 +641,9 @@ def discover_from_sources():
     for source in SOURCES:
         if not source.get("enabled", False):
             continue
-        if str(source.get("language", "en")).lower().split("-")[0] != "en":
-            log.warning("Bỏ qua nguồn không khai báo English: %s", source.get("name", source.get("id")))
+        source_language = str(source.get("language", "en")).lower().split("-")[0]
+        if source_language not in {"en", "vi"}:
+            log.warning("Bỏ qua nguồn chưa hỗ trợ ngôn ngữ %s: %s", source_language, source.get("name", source.get("id")))
             continue
         active_sources.append(source)
 
@@ -746,15 +747,21 @@ def discover_from_rss():
     return discover_from_sources()
 
 
+def _normalize_taxonomy_text(value):
+    """Normalize case and Vietnamese diacritics so English/Vietnamese labels share one matcher."""
+    text = clean_text(value).casefold()
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    return text.replace("đ", "d")
+
+
 def classify_article(article, item=None):
-    """Deterministic destination/topic classifier for site taxonomy. Never guesses unknown country."""
+    """Classify by the website taxonomy; mark unrelated feed items before spending AI tokens."""
     item = item or {}
     image_context = " ".join(
         clean_text(f"{image.get('alt', '')} {image.get('caption', '')}")
         for image in (article.get("source_images") or []) if isinstance(image, dict)
     )
-    # RSS / JSON-LD feeds sometimes return nulls or arrays where other feeds return strings.
-    # Normalize every value before joining so one odd metadata field cannot drop an article.
     parts = [
         clean_text(article.get("source_title")),
         clean_text(article.get("source_summary")),
@@ -764,20 +771,26 @@ def classify_article(article, item=None):
         clean_text(article.get("source_url")),
         clean_text(image_context),
     ]
-    haystack = " ".join(part for part in parts if part).casefold()
-    haystack = re.sub(r"[_/\-]+", " ", haystack)
+    haystack = _normalize_taxonomy_text(" ".join(part for part in parts if part))
+    haystack = re.sub(r"[_/\\-]+", " ", haystack)
+
     matched_countries = []
     matched_city = ""
     matched_city_country = ""
     for country in _TAXONOMY.get("countries", []):
-        alias_list = list(country.get("aliases", []))
+        country_aliases = list(country.get("aliases", [])) + [country.get("name", "")]
         cities = country.get("cities", [])
-        # Match city aliases alongside country names; longest phrase first to avoid partial matches.
-        country_matches = any(re.search(r"(?<!\w)" + re.escape(str(alias).casefold()) + r"(?!\w)", haystack) for alias in sorted(alias_list, key=len, reverse=True) if alias)
+        country_matches = any(
+            (alias_norm := _normalize_taxonomy_text(alias))
+            and re.search(r"(?<!\\w)" + re.escape(alias_norm) + r"(?!\\w)", haystack)
+            for alias in sorted(country_aliases, key=len, reverse=True)
+        )
         country_city_matches = []
         for city in cities:
-            for alias in sorted(city.get("aliases", []), key=len, reverse=True):
-                if alias and re.search(r"(?<!\w)" + re.escape(str(alias).casefold()) + r"(?!\w)", haystack):
+            city_aliases = list(city.get("aliases", [])) + [city.get("name", "")]
+            for alias in sorted(city_aliases, key=len, reverse=True):
+                alias_norm = _normalize_taxonomy_text(alias)
+                if alias_norm and re.search(r"(?<!\\w)" + re.escape(alias_norm) + r"(?!\\w)", haystack):
                     country_city_matches.append(city.get("name", ""))
                     break
         if country_matches or country_city_matches:
@@ -787,20 +800,45 @@ def classify_article(article, item=None):
                 matched_city = country_city_matches[0]
                 matched_city_country = country.get("name", "")
 
-    # Keyword matching by topic; multiple topic pages may be attached to one article.
     topic_scores = []
+    topic_match_count = 0
     for topic in _TAXONOMY.get("topics", []):
         score = 0
         for alias in topic.get("aliases", []):
-            alias_norm = str(alias).casefold().strip()
-            if alias_norm and re.search(r"(?<!\w)" + re.escape(alias_norm) + r"(?!\w)", haystack):
+            alias_norm = _normalize_taxonomy_text(alias)
+            if alias_norm and re.search(r"(?<!\\w)" + re.escape(alias_norm) + r"(?!\\w)", haystack):
                 score += max(1, min(len(alias_norm.split()), 3))
-        # Boost focus tags for a source when title/meta are not very descriptive.
-        if topic.get("slug") in (item.get("source_focus") or []):
+                topic_match_count += 1
+        if score and topic.get("slug") in (item.get("source_focus") or []):
             score += 0.25
         if score:
             topic_scores.append((score, topic.get("slug"), topic.get("name")))
-    topic_scores.sort(key=lambda v: (-v[0], v[1] or ""))
+
+    travel_context_terms = (
+        "travel", "travelling", "traveling", "traveler", "traveller", "trip", "journey",
+        "destination", "tourism", "tourist", "vacation", "holiday", "itinerary",
+        "road trip", "city guide", "travel guide", "things to do", "where to stay",
+        "where to eat", "getting around", "hotel", "resort", "restaurant", "street food",
+        "hiking", "trekking", "beach", "island", "flight", "airport", "train", "bus",
+        "ferry", "motorbike", "visa", "du lich", "hanh trinh", "diem den", "lich trinh",
+        "cam nang", "khach san", "am thuc", "dac san", "tham quan", "check in",
+        "luu tru", "di chuyen", "phuong tien", "ve may bay", "san bay", "tau hoa",
+        "xe khach", "bai bien", "dao", "leo nui", "homestay", "mon ngon",
+    )
+    has_travel_context = any(
+        re.search(r"(?<!\\w)" + re.escape(_normalize_taxonomy_text(term)) + r"(?!\\w)", haystack)
+        for term in travel_context_terms
+    )
+    topic_relevant = bool(topic_match_count or has_travel_context)
+
+    topic_scores.sort(key=lambda value: (-value[0], value[1] or ""))
+    if not topic_scores and topic_relevant:
+        focus_slugs = set(item.get("source_focus") or [])
+        for topic in _TAXONOMY.get("topics", []):
+            if topic.get("slug") in focus_slugs:
+                topic_scores.append((0.25, topic.get("slug"), topic.get("name")))
+        topic_scores.sort(key=lambda value: (-value[0], value[1] or ""))
+
     category_slugs = [slug for _score, slug, _name in topic_scores[:4] if slug]
     if not category_slugs:
         category_slugs = ["travel-guide"]
@@ -809,8 +847,6 @@ def classify_article(article, item=None):
     primary_country = matched_countries[0] if matched_countries else ""
     country_node = next((x for x in _TAXONOMY.get("countries", []) if x.get("name") == primary_country), None)
     country_slug = country_node.get("slug", "") if country_node else "world-unclassified"
-    topic_map = {topic.get("slug"): topic for topic in _TAXONOMY.get("topics", [])}
-    primary_topic = topic_map.get(primary_category, {})
     top_section = {
         "food-and-drink": ("Ẩm thực", "am-thuc"),
         "hotel-review": ("Khách sạn & lưu trú", "khach-san-luu-tru"),
@@ -844,10 +880,13 @@ def classify_article(article, item=None):
         "destination_status": country_status,
         "primary_category": primary_category,
         "topic_categories": category_slugs,
-        "topic_confidence": "medium" if topic_scores and topic_scores[0][0] >= 2 else "low",
+        "topic_confidence": "medium" if topic_match_count >= 2 else "low",
+        "topic_match_count": topic_match_count,
+        "topic_relevant": topic_relevant,
         "taxonomy_path": taxonomy_path,
         "top_level_section": top_section[0],
     }
+
 
 
 def _is_ai_capacity_error(message):
@@ -1289,8 +1328,9 @@ def extract_article_metadata(item):
     page_lang = clean_text(soup.html.get("lang", "")) if soup.html else ""
     declared_language = str(item.get("source_language", "en")).lower().split("-")[0]
     html_language = page_lang.lower().replace("_", "-").split("-")[0]
-    if html_language and html_language != "en":
-        raise ValueError(f"Bỏ qua trang không phải tiếng Anh theo html lang={page_lang}")
+    if html_language and html_language not in {"en", "vi"}:
+        raise ValueError(f"Bỏ qua trang có ngôn ngữ chưa hỗ trợ html lang={page_lang}")
+    resolved_language = html_language or declared_language
 
     body_container = _find_article_container(soup)
     photo_footer_credit = _extract_article_footer_photo_credit(body_container)
@@ -1360,7 +1400,7 @@ def extract_article_metadata(item):
         "source_id": item.get("source_id", ""),
         "source_name": item.get("source_name") or source_publisher,
         "source_domain": item.get("source_domain") or _source_domain(item, article_url),
-        "source_language": item.get("source_language") or declared_language or "en",
+        "source_language": resolved_language or "en",
         "source_feed_url": item.get("source_feed_url", ""),
         "source_focus": item.get("source_focus", []),
         "permission_status": item.get("permission_status", "review_terms_before_commercial_reuse"),
@@ -2727,6 +2767,7 @@ def main(argv=None):
     published_count = 0
     attempted = 0
     duplicates = 0
+    irrelevant_skipped = 0
     failed = 0
     ai_quota_stop = False
     published_articles = []
@@ -2754,6 +2795,23 @@ def main(argv=None):
         try:
             article = extract_article_metadata(item)
             canonical_url = article["source_url"]
+
+            if not article.get("topic_relevant", True):
+                remember_source(
+                    discovered_url, article.get("title_key", ""), article.get("published_day", ""),
+                    status="irrelevant_topic",
+                )
+                if canonical_url != discovered_url:
+                    remember_source(
+                        canonical_url, article.get("title_key", ""), article.get("published_day", ""),
+                        status="irrelevant_topic",
+                    )
+                irrelevant_skipped += 1
+                log.info(
+                    "Bỏ bài ngoài danh mục biên tập; không gọi AI: source=%s title=%s",
+                    article.get("source_name"), article.get("source_title"),
+                )
+                continue
 
             # Canonical URL có thể khác URL trong RSS.
             if already_seen(canonical_url):
@@ -2895,6 +2953,7 @@ def main(argv=None):
         f"Bài đã xử lý: {processed}\n"
         f"Bài mới đã xuất bản: {published_count}/{run_limit}\n"
         f"Bài trùng đã bỏ qua: {duplicates}\n"
+        f"Bài ngoài danh mục đã bỏ qua: {irrelevant_skipped}\n"
         f"Bài lỗi/chưa xuất bản: {failed}\n"
         + ("AI quota/rate limit đã chạm; đã dừng sớm và giữ URL lỗi để thử lại ngày sau." if ai_quota_stop
            else "Có thể xuất bản ít hơn mục tiêu nếu nguồn mới hoặc AI/API không đáp ứng.")
@@ -2910,6 +2969,7 @@ def main(argv=None):
         "candidate_url_count": int((LAST_DISCOVERY_REPORT or {}).get("candidate_urls", len(candidates))),
         "processed_articles": processed,
         "duplicate_skipped_count": duplicates,
+        "irrelevant_skipped_count": irrelevant_skipped,
         "failure_items": failure_items[:20],
         "duration_seconds": round(time.monotonic() - started_at, 1),
     }
