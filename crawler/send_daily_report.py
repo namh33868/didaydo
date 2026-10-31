@@ -5,6 +5,9 @@ import argparse
 import html
 import json
 import os
+import smtplib
+import ssl
+from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -65,6 +68,47 @@ def _build_html(report: dict, job_status: str) -> str:
     """
 
 
+def _send_with_gmail(report: dict, job_status: str, recipients: list[str]) -> bool:
+    username = os.getenv("GMAIL_USERNAME", "").strip()
+    app_password = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
+    if not (username and app_password):
+        return False
+
+    sender_header = os.getenv("REPORT_EMAIL_FROM", "").strip() or username
+    date = str(report.get("date") or "chưa có ngày")
+    count = int(report.get("published_count") or 0)
+    message = EmailMessage()
+    message["Subject"] = f"[Đi Đây Đó] Báo cáo crawler {date}: {count} bài"
+    message["From"] = sender_header
+    message["To"] = ", ".join(recipients)
+
+    articles = report.get("articles") if isinstance(report.get("articles"), list) else []
+    plain = [
+        "Báo cáo crawler Đi Đây Đó",
+        f"Ngày chạy: {date}",
+        f"Đã xuất bản: {count} bài",
+        f"Trạng thái workflow: {job_status}",
+        "",
+        "Bài đã xuất bản:",
+    ]
+    for item in articles:
+        if isinstance(item, dict):
+            plain.append(f"- {item.get('title') or 'Bài viết mới'}: {item.get('url') or ''}")
+    message.set_content("\n".join(plain))
+    message.add_alternative(_build_html(report, job_status), subtype="html")
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.starttls(context=context)
+        smtp.ehlo()
+        smtp.login(username, app_password)
+        smtp.send_message(message)
+
+    print(f"Đã gửi email báo cáo qua Gmail SMTP tới {len(recipients)} địa chỉ.")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--job-status", default=os.getenv("JOB_STATUS", "unknown"))
@@ -96,24 +140,38 @@ def main() -> int:
         except OSError:
             pass
 
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
     recipient = os.getenv("REPORT_EMAIL_TO", "").strip()
-    sender = os.getenv("REPORT_EMAIL_FROM", "").strip()
-    if not (api_key and recipient and sender):
-        print("Email chưa được gửi: cần cấu hình RESEND_API_KEY, REPORT_EMAIL_TO và REPORT_EMAIL_FROM trong GitHub Secrets.")
+    recipients = [x.strip() for x in recipient.replace(";", ",").split(",") if x.strip()]
+    if not recipients:
+        print("Email chưa được gửi: hãy cấu hình REPORT_EMAIL_TO trong GitHub Secrets.")
         print(f"Báo cáo vẫn được lưu trong GitHub Actions Summary/Artifact; job_status={job_status}, published={count}.")
         return 0
 
-    recipients = [x.strip() for x in recipient.replace(";", ",").split(",") if x.strip()]
-    if not recipients:
-        print("Email chưa được gửi: REPORT_EMAIL_TO không có địa chỉ hợp lệ.")
+    # Prefer Gmail SMTP when its dedicated credentials are present. This uses a
+    # Google App Password, not the ChatGPT Gmail connector or the user's login password.
+    if os.getenv("GMAIL_USERNAME", "").strip() and os.getenv("GMAIL_APP_PASSWORD", "").strip():
+        try:
+            _send_with_gmail(report, job_status, recipients)
+            return 0
+        except smtplib.SMTPException as exc:
+            print(f"Gửi email qua Gmail SMTP thất bại: {type(exc).__name__}. Kiểm tra App Password và quyền tài khoản.")
+            return 1
+        except (OSError, TimeoutError) as exc:
+            print(f"Gửi email qua Gmail SMTP thất bại do kết nối: {type(exc).__name__}.")
+            return 1
+
+    # Resend stays available as an alternative when Gmail SMTP is not configured.
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    sender = os.getenv("REPORT_EMAIL_FROM", "").strip()
+    if not (api_key and sender):
+        print("Email chưa được gửi: cần GMAIL_USERNAME + GMAIL_APP_PASSWORD hoặc RESEND_API_KEY + REPORT_EMAIL_FROM.")
+        print(f"Báo cáo vẫn được lưu trong GitHub Actions Summary/Artifact; job_status={job_status}, published={count}.")
         return 0
 
-    subject = f"[Đi Đây Đó] Báo cáo crawler {date}: {count} bài"
     payload = {
         "from": sender,
         "to": recipients,
-        "subject": subject,
+        "subject": f"[Đi Đây Đó] Báo cáo crawler {date}: {count} bài",
         "html": _build_html(report, job_status),
     }
     request = Request(
@@ -128,8 +186,8 @@ def main() -> int:
     )
     try:
         with urlopen(request, timeout=25) as response:
-            body = response.read().decode("utf-8", errors="replace")
-            print(f"Đã gửi email báo cáo qua Resend. HTTP {response.status}; response_id_present={bool(body)}")
+            response.read()
+            print(f"Đã gửi email báo cáo qua Resend. HTTP {response.status}.")
             return 0
     except HTTPError as exc:
         print(f"Gửi email thất bại. Resend HTTP {exc.code}; kiểm tra API key, sender domain và recipient.")
