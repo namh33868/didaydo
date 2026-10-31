@@ -111,7 +111,7 @@ jobs:
           python - <<'PY'
           from main import classify_article
           from site_publisher import _category_for
-          from image_finder import _contains_phrase, is_license_allowed, _license_allowed_code
+          from image_finder import _contains_phrase, _rank_candidates, is_license_allowed, _license_allowed_code
 
           assert _contains_phrase("Ha Long Bay, Vietnam", "Hạ Long"), "Accent-insensitive place matching failed"
           assert not _contains_phrase("Ninh Van Bay, Vietnam", "Hạ Long"), "Different bay must not match Ha Long"
@@ -121,7 +121,27 @@ jobs:
           assert not is_license_allowed("CC BY-ND 4.0"), "No-derivatives license must be rejected"
           assert _license_allowed_code("by-sa"), "Openverse CC BY-SA should be allowed"
           assert not _license_allowed_code("by-nc"), "Openverse NC license must be rejected"
-          print("Cover image matching/license smoke test OK")
+          exact_match = _rank_candidates(
+              [{"title": "Ha Long Bay, Vietnam", "description": "Coastal landscape", "tags_text": "bay", "width": 1600}],
+              ["Hạ Long"], ["Vietnam"], ["bay"], require_place=True, require_country=True,
+          )
+          wrong_bay = _rank_candidates(
+              [{"title": "Ninh Van Bay, Vietnam", "description": "Coastal landscape", "tags_text": "bay", "width": 1600}],
+              ["Hạ Long"], ["Vietnam"], ["bay"], require_place=True, require_country=True,
+          )
+          wrong_country = _rank_candidates(
+              [{"title": "Ha Long Bay", "description": "Coastal landscape, China", "tags_text": "bay", "width": 1600}],
+              ["Hạ Long"], ["Vietnam"], ["bay"], require_place=True, require_country=True,
+          )
+          wrong_topic = _rank_candidates(
+              [{"title": "Ha Long Bay, Vietnam", "description": "City street architecture", "tags_text": "building", "width": 1600}],
+              ["Hạ Long"], ["Vietnam"], ["hotel"], require_place=True, require_country=True,
+          )
+          assert exact_match, "Exact place + country + topic should match"
+          assert not wrong_bay, "Another bay must not be accepted"
+          assert not wrong_country, "Same place phrase without matching country must not be accepted"
+          assert not wrong_topic, "Exact place without topic evidence must not be accepted"
+          print("Cover image destination/topic/license smoke test OK")
 
           cases = [
               ({"source_title": "Ẩm thực Đà Nẵng: 10 món ngon", "source_url": "https://example.test/food"}, {"source_language": "vi", "source_focus": ["food-and-drink"]}, "food-and-drink", "Ẩm thực"),
