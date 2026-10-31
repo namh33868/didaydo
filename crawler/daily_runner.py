@@ -1,7 +1,4 @@
-"""Run the daily publish quota: retry pending AI articles, then crawl new ones.
-
-This script is used by GitHub Actions. It has no Telegram dependency.
-"""
+"""Daily crawl/publish orchestration for GitHub Actions (no Telegram)."""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +12,19 @@ import sync_to_site
 log = logging.getLogger("travel-content-bot.daily")
 
 
+def _env_int(name: str, default: int, minimum: int = 1, maximum: int = 10) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+MIN_DAILY_ARTICLES = _env_int("MIN_DAILY_ARTICLES", 3)
+PREFERRED_DAILY_ARTICLES = _env_int("PREFERRED_DAILY_ARTICLES", 5)
+MAX_DAILY_ARTICLES = _env_int("MAX_ARTICLES", 10)
+
+
 def _complete(draft) -> bool:
     return bool(
         isinstance(draft, dict)
@@ -25,20 +35,45 @@ def _complete(draft) -> bool:
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Retry pending articles, then publish up to N new travel articles without Telegram."
+        description="Publish 3-10 complete travel articles per day when sources and AI capacity allow."
     )
     parser.add_argument(
         "--limit",
         type=int,
-        default=int(os.getenv("MAX_ARTICLES", "10")),
-        help="Total number of newly published articles to target (default: MAX_ARTICLES or 10).",
+        default=MAX_DAILY_ARTICLES,
+        help="Daily publication ceiling (1-10); defaults to MAX_ARTICLES or 10.",
     )
     return parser.parse_args()
 
 
+def _log_daily_tier(total: int) -> None:
+    if total >= MAX_DAILY_ARTICLES:
+        log.info("Đã đạt trần ngày: %s/%s bài.", total, MAX_DAILY_ARTICLES)
+    elif total >= PREFERRED_DAILY_ARTICLES:
+        log.info("Đã đạt mục tiêu tốt: %s bài (mốc ưu tiên %s; trần %s).",
+                 total, PREFERRED_DAILY_ARTICLES, MAX_DAILY_ARTICLES)
+    elif total >= MIN_DAILY_ARTICLES:
+        log.info("Đã đạt mức tối thiểu: %s bài (mục tiêu tiếp theo %s; trần %s).",
+                 total, PREFERRED_DAILY_ARTICLES, MAX_DAILY_ARTICLES)
+    else:
+        log.warning(
+            "Hôm nay mới xuất bản %s/%s bài tối thiểu; nguồn mới hoặc quota/AI/API chưa đủ. "
+            "Các bài chưa hoàn chỉnh được giữ trong SQLite để thử lại ở lần chạy sau.",
+            total, MIN_DAILY_ARTICLES,
+        )
+
+
 def main():
     args = parse_args()
-    target = max(1, min(int(args.limit), 10))
+    maximum = max(1, min(int(args.limit), MAX_DAILY_ARTICLES))
+    minimum = min(MIN_DAILY_ARTICLES, maximum)
+    preferred = min(PREFERRED_DAILY_ARTICLES, maximum)
+
+    log.info(
+        "Kế hoạch hôm nay: tối thiểu %s bài, mục tiêu ưu tiên %s bài, tối đa %s bài.",
+        minimum, preferred, maximum,
+    )
+
     db_path = bot.DATABASE_PATH
     bot.init_db()
     site_publisher.ensure_table(db_path)
@@ -50,13 +85,13 @@ def main():
     site_publisher._check_api_ready()
 
     recovered_published = 0
-    pending_rows = site_publisher.list_pending_drafts(db_path, limit=target)
+    pending_rows = site_publisher.list_pending_drafts(db_path, limit=maximum)
     for row in pending_rows:
-        if recovered_published >= target:
+        if recovered_published >= maximum:
             break
         article, draft = sync_to_site._article_and_draft(row)
         if not _complete(draft):
-            log.warning("Bỏ qua artifact chưa hoàn chỉnh, chưa gọi AI lại: %s", row.get("source_url"))
+            log.warning("Bỏ qua artifact chưa hoàn chỉnh, chờ lần crawl sau: %s", row.get("source_url"))
             continue
         try:
             result = site_publisher.sync_draft_to_site(article, draft, db_path)
@@ -70,16 +105,38 @@ def main():
             recovered_published += 1
             log.info("Đã xuất bản lại bài đang chờ: %s", result.get("site_url"))
 
-    remaining = target - recovered_published
-    log.info("Quota ngày=%s; khôi phục được %s bài; sẽ crawl tối đa %s bài mới.", target, recovered_published, remaining)
+    remaining = maximum - recovered_published
+    log.info(
+        "Đã khôi phục %s bài; hôm nay còn chỗ cho tối đa %s bài mới.",
+        recovered_published, remaining,
+    )
+
+    new_published = 0
+    ai_quota_stop = False
+    failed = 0
     if remaining > 0:
-        # main.py already handles duplicate detection, AI generation, output checkpoints,
-        # and direct website publishing. Its Telegram sending calls are no longer used.
-        bot.main(["--limit", str(remaining)])
+        # The crawler targets the daily ceiling, not a fixed quota. It stops early
+        # only when all configured AI providers have hit a capacity/auth failure.
+        result = bot.main(["--limit", str(remaining)]) or {}
+        new_published = int(result.get("published_count", 0) or 0)
+        failed = int(result.get("failed", 0) or 0)
+        ai_quota_stop = bool(result.get("ai_quota_stop"))
     else:
         bot._reconcile_site_publications()
         bot.cleanup_published_artifacts()
-        log.info("Đã đủ quota %s bài; không crawl thêm để tránh vượt hạn mức ngày.", target)
+        log.info("Đã đủ trần %s bài trong ngày; không crawl thêm.", maximum)
+
+    total_published = recovered_published + new_published
+    _log_daily_tier(total_published)
+
+    if failed and not ai_quota_stop:
+        raise SystemExit(1)
+
+    if ai_quota_stop:
+        log.warning(
+            "Run kết thúc sớm vì AI quota/rate limit; không tiếp tục tiêu token trong hôm nay. "
+            "URL chưa có bản AI hoàn chỉnh sẽ được thử lại vào lịch ngày mai."
+        )
 
 
 if __name__ == "__main__":
