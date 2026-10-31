@@ -138,6 +138,9 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
 
   const excerpt = input.excerpt?.trim() || existing?.excerpt || "";
   const coverImage = input.coverImage?.trim() || existing?.cover_image || "";
+  if (status === "published" && !coverImage) {
+    throw new Error("Published posts must have a cover image.");
+  }
   const coverAlt = input.coverAlt?.trim() || existing?.cover_alt || "";
   const coverCredit = input.coverCredit?.trim() || existing?.cover_credit || "";
   const tags = input.tags?.length ? input.tags : existing?.tags || [];
