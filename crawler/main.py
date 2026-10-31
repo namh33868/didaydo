@@ -786,7 +786,9 @@ def already_seen(url):
     url = normalize_url(url) or url
     with sqlite3.connect(DATABASE_PATH, timeout=30) as conn:
         row = conn.execute(
-            """SELECT 1 FROM seen_sources WHERE source_url=?
+            """SELECT 1 FROM seen_sources
+               WHERE source_url=?
+                 AND status NOT IN ('ai_failed_metadata_only','discovered','existing')
                UNION
                SELECT 1 FROM articles
                WHERE source_url=?
