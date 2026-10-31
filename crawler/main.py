@@ -672,8 +672,7 @@ def discover_from_sources():
                 FROM articles a
                 LEFT JOIN article_taxonomy t ON t.source_url=a.source_url
                 WHERE a.status IN ('ai_failed_metadata_only','discovered')
-                  AND COALESCE(a.seo_title,'')=''
-                  AND COALESCE(a.seo_content,'')=''
+                  AND (COALESCE(a.seo_title,'')='' OR COALESCE(a.seo_content,'')='')
                 ORDER BY a.updated_at ASC
                 LIMIT 30
             """).fetchall()
