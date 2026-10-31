@@ -147,17 +147,25 @@ def main():
             print(f"Bỏ qua vì chưa có bài AI hoàn chỉnh: {source_url}")
             failed += 1
             continue
-        payload = site_publisher.build_site_payload(article, draft)
         if args.dry_run:
-            print("\nDRY RUN — chưa gửi website")
-            print("Nguồn:", source_url)
-            print("Tiêu đề:", payload["title"])
-            print("Danh mục:", payload["category"])
-            print("Tags:", ", ".join(payload["tags"]))
-            print("Ảnh đại diện:", payload["coverImage"] or "Không đặt ảnh đại diện")
-            print("HTML:", len(payload["contentHtml"]), "ký tự")
-            print("Trạng thái đích: draft")
-            ok += 1
+            try:
+                if not site_publisher.SOURCE_IMAGE_REUSE_AUTHORIZED:
+                    selected_cover = site_publisher._ensure_editorial_cover_image(article, bot.DATABASE_PATH)
+                    if not selected_cover:
+                        raise RuntimeError("Không tìm được ảnh đại diện phù hợp có giấy phép sử dụng.")
+                payload = site_publisher.build_site_payload(article, draft)
+                print("\\nDRY RUN — chưa gửi website")
+                print("Nguồn:", source_url)
+                print("Tiêu đề:", payload["title"])
+                print("Danh mục:", payload["category"])
+                print("Tags:", ", ".join(payload["tags"]))
+                print("Ảnh đại diện:", payload["coverImage"])
+                print("HTML:", len(payload["contentHtml"]), "ký tự")
+                print("Trạng thái đích: draft")
+                ok += 1
+            except Exception as exc:
+                print(f"DRY RUN không đạt: {type(exc).__name__}: {str(exc)[:300]}")
+                failed += 1
             continue
         try:
             result = site_publisher.sync_draft_to_site(article, draft, bot.DATABASE_PATH, force=args.force)
