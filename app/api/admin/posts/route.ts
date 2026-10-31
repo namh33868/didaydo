@@ -82,10 +82,14 @@ export async function POST(request: Request) {
     const destination = input.destination && country ? await ensureDestination(input.destination, "city", country.id) : null;
     const status = session.role === "author" ? "draft" : input.status;
     const featured = session.role === "author" ? false : input.featured;
+    const coverImage = input.coverImage?.trim() || "";
+    if (status === "published" && !coverImage) {
+      return NextResponse.json({ error: "Bài viết cần ảnh đại diện trước khi xuất bản." }, { status: 400 });
+    }
     const publishedAt = status === "published" ? new Date() : null;
     const rows = await db<PostRecord[]>`
       INSERT INTO posts (title, slug, excerpt, content_html, cover_image, cover_alt, cover_credit, category_name, category_slug, country_id, country_name, country_slug, destination_id, destination_name, destination_slug, tags, status, featured, author_name, created_by, updated_by, source_url, source_name, seo_title, seo_description, published_at)
-      VALUES (${input.title}, ${slug}, ${input.excerpt || ""}, ${cleanArticleHtml(contentToHtml(input.contentHtml || ""))}, ${input.coverImage || ""}, ${input.coverAlt || ""}, ${input.coverCredit || ""}, ${topic.name}, ${topic.slug || slugify(topic.name)}, ${country?.id || null}, ${country?.name || ""}, ${country?.slug || ""}, ${destination?.id || null}, ${destination?.name || ""}, ${destination?.slug || ""}, ${input.tags || []}, ${status}, ${featured || false}, ${input.authorName || session.fullName || "Ban biên tập"}, ${session.userId}, ${session.userId}, ${input.sourceUrl || null}, ${input.sourceName || ""}, ${input.seoTitle || ""}, ${input.seoDescription || ""}, ${publishedAt})
+      VALUES (${input.title}, ${slug}, ${input.excerpt || ""}, ${cleanArticleHtml(contentToHtml(input.contentHtml || ""))}, ${coverImage}, ${input.coverAlt || ""}, ${input.coverCredit || ""}, ${topic.name}, ${topic.slug || slugify(topic.name)}, ${country?.id || null}, ${country?.name || ""}, ${country?.slug || ""}, ${destination?.id || null}, ${destination?.name || ""}, ${destination?.slug || ""}, ${input.tags || []}, ${status}, ${featured || false}, ${input.authorName || session.fullName || "Ban biên tập"}, ${session.userId}, ${session.userId}, ${input.sourceUrl || null}, ${input.sourceName || ""}, ${input.seoTitle || ""}, ${input.seoDescription || ""}, ${publishedAt})
       RETURNING *
     `;
     return NextResponse.json({ post: toAdminPost(rows[0]) }, { status: 201 });
@@ -128,10 +132,14 @@ export async function PATCH(request: Request) {
     const destination = input.destination && country ? await ensureDestination(input.destination, "city", country.id) : null;
     const status = session.role === "author" ? "draft" : input.status;
     const featured = session.role === "author" ? false : input.featured;
+    const coverImage = input.coverImage?.trim() || existing.cover_image || "";
+    if (status === "published" && !coverImage) {
+      return NextResponse.json({ error: "Bài viết cần ảnh đại diện trước khi xuất bản." }, { status: 400 });
+    }
     const publishedAt = status === "published" ? existing.published_at || new Date() : null;
     const rows = await db<PostRecord[]>`
       UPDATE posts SET title = ${input.title}, slug = ${slug}, excerpt = ${input.excerpt || ""}, content_html = ${cleanArticleHtml(contentToHtml(input.contentHtml || ""))},
-        cover_image = ${input.coverImage || ""}, cover_alt = ${input.coverAlt || ""}, cover_credit = ${input.coverCredit || ""}, category_name = ${topic.name}, category_slug = ${topic.slug || slugify(topic.name)},
+        cover_image = ${coverImage}, cover_alt = ${input.coverAlt || ""}, cover_credit = ${input.coverCredit || ""}, category_name = ${topic.name}, category_slug = ${topic.slug || slugify(topic.name)},
         country_id = ${country?.id || null}, country_name = ${country?.name || ""}, country_slug = ${country?.slug || ""},
         destination_id = ${destination?.id || null}, destination_name = ${destination?.name || ""}, destination_slug = ${destination?.slug || ""},
         tags = ${input.tags || []}, status = ${status}, featured = ${featured || false}, author_name = ${input.authorName || "Ban biên tập"},
