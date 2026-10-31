@@ -7,6 +7,9 @@ type AnalyticsChoice = "granted" | "denied";
 
 const CONSENT_KEY = "didaydo-analytics-consent-v1";
 const OPEN_EVENT = "didaydo:open-analytics-consent";
+const ANALYTICS_ENABLED = /^G-[A-Z0-9]+$/i.test(
+  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "",
+);
 
 export function AnalyticsConsent() {
   const [choice, setChoice] = useState<AnalyticsChoice | null>(null);
@@ -14,6 +17,7 @@ export function AnalyticsConsent() {
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
+    if (!ANALYTICS_ENABLED) return;
     try {
       const saved = window.localStorage.getItem(CONSENT_KEY);
       if (saved === "granted" || saved === "denied") {
@@ -48,6 +52,8 @@ export function AnalyticsConsent() {
     setChoice(value);
     setShowPrompt(false);
   }
+
+  if (!ANALYTICS_ENABLED) return null;
 
   return (
     <>
