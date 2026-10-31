@@ -35,6 +35,7 @@ export type PostRecord = {
   tags: string[];
   status: "draft" | "published" | "archived";
   featured: boolean;
+  featured_until: Date | null;
   author_name: string;
   source_url: string | null;
   source_name: string;
