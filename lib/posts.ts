@@ -1,7 +1,9 @@
 import { db, type PostRecord, type PostSummary } from "@/lib/db";
+import { ensureFeaturedSchedule } from "@/lib/featured";
 
 // List queries return PostSummary and avoid transferring full article HTML.
 export async function getPublishedPosts(limit = 12, offset = 0) {
+  await ensureFeaturedSchedule();
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
@@ -44,6 +46,7 @@ export async function getRecentPosts(limit = 6, excludeSlug?: string) {
 }
 
 export async function getWorldPosts(limit = 8) {
+  await ensureFeaturedSchedule();
   return db<PostSummary[]>`
     SELECT p.id, p.title, p.slug, p.excerpt,
       char_length(regexp_replace(p.content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
@@ -64,7 +67,8 @@ export async function getWorldPosts(limit = 8) {
 }
 
 export async function getFeaturedPosts(limit = 8) {
-  // Manually featured stories are shown first; remaining slots fill automatically.
+  await ensureFeaturedSchedule();
+  // Active manual picks first; newest published stories fill every remaining slot.
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
@@ -74,12 +78,13 @@ export async function getFeaturedPosts(limit = 8) {
       published_at, created_at, updated_at
     FROM posts
     WHERE status = 'published' AND published_at <= NOW()
-    ORDER BY featured DESC, published_at DESC NULLS LAST, created_at DESC
+    ORDER BY CASE WHEN featured = TRUE AND featured_until > NOW() THEN 0 ELSE 1 END, published_at DESC NULLS LAST, created_at DESC
     LIMIT ${limit}
   `;
 }
 
 export async function getFeaturedPost() {
+  await ensureFeaturedSchedule();
   const rows = await db<PostRecord[]>`
     SELECT * FROM posts WHERE status = 'published' AND published_at <= NOW()
     ORDER BY featured DESC, published_at DESC NULLS LAST LIMIT 1
@@ -95,6 +100,7 @@ export async function getPostBySlug(slug: string) {
 }
 
 export async function getPostsByCategory(slug: string, limit = 12, offset = 0) {
+  await ensureFeaturedSchedule();
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
