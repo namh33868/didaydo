@@ -21,6 +21,7 @@ STATUS_LABELS = {
     "quota_limited": ("DỪNG DO GIỚI HẠN AI", "#9a6700"),
     "source_error": ("LỖI ĐỌC NGUỒN RSS", "#b42318"),
     "no_new_articles": ("KHÔNG CÓ BÀI MỚI ĐỂ XỬ LÝ", "#9a6700"),
+    "no_relevant_articles": ("KHÔNG CÓ BÀI PHÙ HỢP DANH MỤC", "#9a6700"),
     "no_posts": ("CHƯA XUẤT BẢN ĐƯỢC BÀI", "#b42318"),
     "report_missing": ("KHÔNG TẠO ĐƯỢC BÁO CÁO CRAWLER", "#b42318"),
 }
@@ -88,6 +89,8 @@ def _next_step(report: dict, job_status: str) -> str:
         return "AI đã chạm quota hoặc rate limit. Crawler dừng gọi AI để tránh tiêu token tiếp; bài chưa hoàn chỉnh sẽ được thử lại ở lịch sau."
     if status == "source_error":
         return "Không đọc được các nguồn RSS. Kiểm tra parser XML, feed URL và các lỗi 403/503/SSL ở bảng nguồn lỗi."
+    if status == "no_relevant_articles":
+        return "Có URL mới nhưng không bài nào khớp các danh mục biên tập hiện tại. Kiểm tra nguồn RSS hoặc bổ sung từ khóa phân loại nếu nguồn có nội dung du lịch phù hợp."
     if status == "no_new_articles":
         return "Các feed đã đọc được nhưng không có URL mới đủ điều kiện. Kiểm tra lại vào lượt chạy kế tiếp."
     if status == "no_posts":
@@ -144,6 +147,7 @@ def _build_html(report: dict, job_status: str, run_url: str) -> str:
     attempted = int(report.get("attempted_url_count") or 0)
     processed = int(report.get("processed_article_count") or 0)
     duplicate_count = int(report.get("duplicate_skipped_count") or 0)
+    irrelevant_count = int(report.get("irrelevant_skipped_count") or 0)
     retry_count = int(report.get("retry_candidate_count") or 0)
     failed_articles = int(report.get("failed_count") or 0)
     duration = _duration(report.get("duration_seconds"))
@@ -236,6 +240,7 @@ def _build_html(report: dict, job_status: str, run_url: str) -> str:
           <tr><td>URL mới đã thử</td><td align="right"><strong>{attempted}</strong></td></tr>
           <tr><td>Bài đã xử lý xong bước crawl/AI</td><td align="right"><strong>{processed}</strong></td></tr>
           <tr><td>URL trùng/đã biết được bỏ qua</td><td align="right"><strong>{duplicate_count}</strong></td></tr>
+          <tr><td>Bài ngoài danh mục biên tập được bỏ qua</td><td align="right"><strong>{irrelevant_count}</strong></td></tr>
           <tr><td>Bài cũ được đưa vào hàng đợi thử lại</td><td align="right"><strong>{retry_count}</strong></td></tr>
           <tr><td>Bài lỗi/chưa publish</td><td align="right"><strong>{failed_articles}</strong></td></tr>
         </table>
@@ -266,7 +271,7 @@ def _build_text(report: dict, job_status: str, run_url: str) -> str:
         f"Đã publish: {report.get('published_count', 0)} bài",
         f"Mục tiêu: {report.get('minimum', 3)} tối thiểu / {report.get('preferred', 5)} mong muốn / {report.get('maximum', 10)} tối đa",
         f"Nguồn RSS: {report.get('successful_feed_count', 0)} đọc được; {report.get('failed_feed_count', 0)} lỗi; {report.get('candidate_url_count', 0)} URL ứng viên",
-        f"Xử lý: {report.get('attempted_url_count', 0)} URL đã thử; {report.get('processed_article_count', 0)} bài đã xử lý; {report.get('duplicate_skipped_count', 0)} URL trùng; {report.get('failed_count', 0)} bài lỗi",
+        f"Xử lý: {report.get('attempted_url_count', 0)} URL đã thử; {report.get('processed_article_count', 0)} bài đã xử lý; {report.get('duplicate_skipped_count', 0)} URL trùng; {report.get('irrelevant_skipped_count', 0)} bài ngoài danh mục; {report.get('failed_count', 0)} bài lỗi",
         f"Thời gian crawler: {_duration(report.get('duration_seconds'))}",
         "",
         "BÀI ĐÃ PUBLISH:",
@@ -351,7 +356,7 @@ def main() -> int:
             f"- Kết luận: **{_status(report, job_status)[0]}**",
             f"- Đã publish: **{count} bài** (mục tiêu {report.get('minimum', 3)}/{report.get('preferred', 5)}/{report.get('maximum', 10)})",
             f"- RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi / {report.get('candidate_url_count', 0)} URL ứng viên",
-            f"- Xử lý: {report.get('attempted_url_count', 0)} URL đã thử / {report.get('processed_article_count', 0)} bài đã xử lý / {report.get('failed_count', 0)} bài lỗi",
+            f"- Xử lý: {report.get('attempted_url_count', 0)} URL đã thử / {report.get('processed_article_count', 0)} bài đã xử lý / {report.get('irrelevant_skipped_count', 0)} bài ngoài danh mục / {report.get('failed_count', 0)} bài lỗi",
             f"- Thời gian: {_duration(report.get('duration_seconds'))}",
         ]
         for item in articles:
