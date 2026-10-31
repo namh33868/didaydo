@@ -154,7 +154,7 @@ def main():
                     if not selected_cover:
                         raise RuntimeError("Không tìm được ảnh đại diện phù hợp có giấy phép sử dụng.")
                 payload = site_publisher.build_site_payload(article, draft)
-                print("\\nDRY RUN — chưa gửi website")
+                print("\nDRY RUN — chưa gửi website")
                 print("Nguồn:", source_url)
                 print("Tiêu đề:", payload["title"])
                 print("Danh mục:", payload["category"])
