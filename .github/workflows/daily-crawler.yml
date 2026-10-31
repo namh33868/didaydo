@@ -2,8 +2,8 @@ name: Daily travel crawler
 
 on:
   schedule:
-    # 08:00 Vietnam time (UTC+7) every day.
-    - cron: "0 1 * * *"
+    # 10:00 Vietnam time (UTC+7) every day.
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +21,8 @@ jobs:
       run:
         working-directory: crawler
     env:
+      MIN_DAILY_ARTICLES: "3"
+      PREFERRED_DAILY_ARTICLES: "5"
       MAX_ARTICLES: "10"
       SITE_SYNC_ENABLED: "true"
       SITE_URL: ${{ secrets.SITE_URL }}
@@ -100,7 +102,7 @@ jobs:
           print("Vercel ingest API OK; auto-publish is enabled.")
           PY
 
-      - name: Crawl up to 10 new articles and publish to Vercel
+      - name: Crawl and publish 3-10 articles (best effort)
         shell: bash
         run: |
           set -o pipefail
