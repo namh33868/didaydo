@@ -59,7 +59,7 @@ export async function PATCH(request: Request) {
       }
     }
 
-    const updated = await db<{ id: string; featured: boolean }[]>`
+    const updated = await db<{ id: string; featured: boolean; featured_until: Date | null }[]>`
       UPDATE posts
       SET featured = ${shouldFeature},
         featured_until = CASE
