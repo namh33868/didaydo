@@ -101,6 +101,13 @@ def main():
         try:
             result = site_publisher.sync_draft_to_site(article, draft, db_path)
         except Exception as exc:
+            message = str(exc).casefold()
+            if any(marker in message for marker in ("cover image", "ảnh đại diện", "giấy phép sử dụng")):
+                log.warning(
+                    "Bài chờ chưa có ảnh đại diện đạt điều kiện; giữ lại để thử ở lần chạy sau: %s",
+                    row.get("source_url"),
+                )
+                continue
             log.exception("Không thể khôi phục bài đang chờ xuất bản: %s", row.get("source_url"))
             raise SystemExit(1) from exc
         if not result.get("ok") and not result.get("skipped"):
