@@ -658,6 +658,60 @@ def discover_from_sources():
         "Multi-source discovery: active_sources=%s feeds_with_items=%s candidate_urls=%s",
         len(active_sources), len(per_source), len(ordered),
     )
+
+    # Always revisit previously saved AI failures, even when their RSS feed has
+    # rolled them out of its recent-items window.
+    retry_candidates = []
+    try:
+        with sqlite3.connect(DATABASE_PATH, timeout=30) as conn:
+            conn.row_factory = sqlite3.Row
+            retry_rows = conn.execute("""
+                SELECT a.source_url, a.source_title, a.source_summary, a.published_at,
+                       a.source_image_url, t.source_id, t.source_name, t.source_domain,
+                       t.source_feed_url, t.source_language
+                FROM articles a
+                LEFT JOIN article_taxonomy t ON t.source_url=a.source_url
+                WHERE a.status IN ('ai_failed_metadata_only','discovered')
+                  AND COALESCE(a.seo_title,'')=''
+                  AND COALESCE(a.seo_content,'')=''
+                ORDER BY a.updated_at ASC
+                LIMIT 30
+            """).fetchall()
+
+        for row in retry_rows:
+            source = _source_by_id(row["source_id"]) if row["source_id"] else None
+            if not source:
+                continue
+            retry_candidates.append({
+                "source_url": row["source_url"],
+                "rss_title": row["source_title"],
+                "rss_summary": row["source_summary"] or "",
+                "rss_published_at": row["published_at"] or "",
+                "rss_categories": [],
+                "rss_image_url": row["source_image_url"],
+                "source_id": source.get("id", ""),
+                "source_name": row["source_name"] or source.get("name", ""),
+                "source_homepage": source.get("homepage", ""),
+                "source_feed_url": row["source_feed_url"] or source.get("feed_url", ""),
+                "source_domain": row["source_domain"] or _source_domain(source, row["source_url"]),
+                "source_language": row["source_language"] or source.get("language", "en"),
+                "source_focus": source.get("focus", []),
+                "allowed_domains": source.get("article_domains") or source.get("allowed_domains", []),
+                "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+            })
+    except sqlite3.Error as exc:
+        log.warning("Không nạp được hàng đợi AI lỗi từ SQLite (%s); vẫn crawl RSS mới.", type(exc).__name__)
+
+    if retry_candidates:
+        combined, seen_urls = [], set()
+        for candidate in retry_candidates + ordered:
+            url = normalize_url(candidate.get("source_url", ""))
+            if url and url not in seen_urls:
+                combined.append(candidate)
+                seen_urls.add(url)
+        log.info("Ưu tiên thử lại %s bài AI chưa hoàn chỉnh đã lưu trước bài RSS mới.", len(retry_candidates))
+        ordered = combined
+
     return ordered
 
 # Legacy function name retained for callers, but it now reads all configured feeds (never VnExpress).
