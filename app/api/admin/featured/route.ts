@@ -40,7 +40,7 @@ export async function PATCH(request: Request) {
   try {
     await ensureFeaturedSchedule();
     const currentRows = await db<{ id: string; status: string; featured: boolean; featured_until: Date | null; published_at: Date | null }[]>`
-      SELECT id, status, featured, published_at FROM posts WHERE id = ${postId} LIMIT 1
+      SELECT id, status, featured, featured_until, published_at FROM posts WHERE id = ${postId} LIMIT 1
     `;
     const current = currentRows[0];
     if (!current) return NextResponse.json({ error: "Không tìm thấy bài viết." }, { status: 404 });
