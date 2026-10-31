@@ -83,7 +83,7 @@ export function CopyrightReportsPanel() {
       <div className="admin-topbar">
         <div>
           <span className="eyebrow">WORKSPACE / TRUST & SAFETY</span>
-          <h1>Báo cáo bản quyền</h1>
+          <h1>Yêu cầu gỡ nội dung</h1>
           <p className="admin-page-subtitle">Tiếp nhận, xác minh và ghi nhận kết quả xử lý khiếu nại.</p>
         </div>
         <button className="button-secondary" onClick={() => void load()} disabled={busy}>
@@ -91,7 +91,7 @@ export function CopyrightReportsPanel() {
         </button>
       </div>
       <div className="admin-stats copyright-report-stats">
-        <div><span>Tổng báo cáo</span><strong>{reports.length}</strong><small>Tối đa 200 báo cáo gần nhất</small></div>
+        <div><span>Tổng thông báo</span><strong>{reports.length}</strong><small>Tối đa 200 báo cáo gần nhất</small></div>
         <div><span>Chưa đóng</span><strong>{openCount}</strong><small>Cần kiểm tra tiếp</small></div>
         <div><span>Mới tiếp nhận</span><strong>{reports.filter((item) => item.status === "new").length}</strong><small>Chưa phân loại</small></div>
         <div><span>Đã xử lý / từ chối</span><strong>{reports.filter((item) => item.status === "resolved" || item.status === "rejected").length}</strong><small>Đã có kết luận</small></div>
@@ -100,8 +100,8 @@ export function CopyrightReportsPanel() {
       {reports.length === 0 && !busy && (
         <div className="admin-table-card copyright-empty">
           <ShieldAlert size={25}/>
-          <b>Chưa có báo cáo bản quyền</b>
-          <span>Các biểu mẫu mới gửi sẽ xuất hiện tại đây.</span>
+          <b>Chưa có thông báo vi phạm</b>
+          <span>Các thông báo mới gửi sẽ xuất hiện tại đây.</span>
         </div>
       )}
       <div className="copyright-admin-list">
@@ -110,7 +110,7 @@ export function CopyrightReportsPanel() {
             <header className="copyright-report-head">
               <div>
                 <span className="eyebrow">GỬI NGÀY {new Date(report.createdAt).toLocaleString("vi-VN")}</span>
-                <h2>{report.workTitle || "Báo cáo sử dụng tác phẩm"}</h2>
+                <h2>{report.workTitle || "Thông báo về tác phẩm"}</h2>
                 <p>{report.claimantName} · <a href={"mailto:" + report.claimantEmail}>{report.claimantEmail}</a> · {report.relationship}</p>
               </div>
               <span className="status-pill status-draft">{labels[report.status]}</span>
