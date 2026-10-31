@@ -3,11 +3,11 @@ type CoverAttributionProps = {
 };
 
 export function CoverAttribution({ credit }: CoverAttributionProps) {
-  const sourceMatch = credit.match(/Nguồn ảnh:\\s*(https:\/\/[^\\s·]+)/i);
-  const licenseMatch = credit.match(/Giấy phép:\\s*(https:\/\/[^\\s·]+)/i);
+  const sourceMatch = credit.match(/Nguồn ảnh:\s*(https:\/\/[^\s·]+)/i);
+  const licenseMatch = credit.match(/Giấy phép:\s*(https:\/\/[^\s·]+)/i);
   const description = credit
-    .replace(/\\s*·\\s*Nguồn ảnh:\\s*https:\/\/[^\\s·]+/i, "")
-    .replace(/\\s*·\\s*Giấy phép:\\s*https:\/\/[^\\s·]+/i, "")
+    .replace(/\s*·\s*Nguồn ảnh:\s*https:\/\/[^\s·]+/i, "")
+    .replace(/\s*·\s*Giấy phép:\s*https:\/\/[^\s·]+/i, "")
     .trim();
 
   if (!sourceMatch && !licenseMatch) {
