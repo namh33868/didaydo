@@ -2910,10 +2910,20 @@ def main(argv=None):
                         "source": clean_text(article.get("source_name") or article.get("source_publisher"))[:120],
                         "reason": clean_text(site_result.get("error", "Không rõ lỗi"))[:400],
                     })
-                    log.error("Chưa xuất bản được bài lên website: %s", site_result.get("error", "lỗi không rõ"))
-                    # A connection/auth/config error affects every subsequent post; stop
-                    # before spending more AI calls while the publishing endpoint is down.
-                    break
+                    publish_error = clean_text(site_result.get("error", "lỗi không rõ"))
+                    log.error("Chưa xuất bản được bài lên website: %s", publish_error)
+                    cover_only_failure = any(
+                        marker in publish_error.casefold()
+                        for marker in ("cover image", "ảnh đại diện", "giấy phép sử dụng")
+                    )
+                    if cover_only_failure:
+                        # One article may have no safe matching image; keep it pending,
+                        # but continue discovering other articles instead of stopping today's run.
+                        log.warning("Bài này chưa có ảnh đạt điều kiện; giữ lại để thử ảnh ở lần chạy sau.")
+                    else:
+                        # A connection/auth/config error affects every subsequent post.
+                        # Stop before spending more AI calls while the publishing endpoint is down.
+                        break
             else:
                 failed += 1
                 if error_message:
