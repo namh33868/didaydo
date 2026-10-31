@@ -179,7 +179,7 @@ _TOPIC_CONFIG = {
     },
     "destination-news": {
         "query": "travel destination landscape",
-        "terms": ["travel", "destination", "tourism", "landscape"],
+        "terms": ["travel", "destination", "tourism", "landscape", "bay", "beach", "island", "coast", "mountain", "forest", "attraction", "landmark"],
         "label": "điểm đến du lịch",
     },
     "travel-tips": {
@@ -189,7 +189,7 @@ _TOPIC_CONFIG = {
     },
     "travel-guide": {
         "query": "travel destination landscape",
-        "terms": ["travel", "destination", "tourism", "landscape", "city"],
+        "terms": ["travel", "destination", "tourism", "landscape", "city", "bay", "beach", "island", "coast", "mountain", "cave", "waterfall", "forest", "temple", "market", "attraction", "landmark"],
         "label": "du lịch",
     },
 }
@@ -389,7 +389,9 @@ def _rank_candidates(candidates: list[dict], place_terms: list[str], country_ter
         place_matches = _matches_any(metadata, place_terms)
         country_matches = _matches_any(metadata, country_terms)
         topic_matches = _matches_any(metadata, topic_terms)
-        if require_place and not place_matches:
+        # A destination match alone is not enough: the image must also fit the
+        # article topic (for example, a Ha Long hotel post must not get a random bay view).
+        if require_place and (not place_matches or not topic_matches):
             continue
         if not require_place and not topic_matches:
             continue
