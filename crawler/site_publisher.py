@@ -153,27 +153,53 @@ def _parse_list(value) -> list[str]:
 
 
 def _category_for(article: dict) -> str:
-    country = clean(article.get("destination_country") or "")
-    top = clean(article.get("top_level_section") or "")
-    labels = " ".join([
-        clean(article.get("primary_category")),
-        clean(article.get("taxonomy_path")),
-        clean(article.get("source_section")),
-        " ".join(_parse_list(article.get("topic_categories"))),
-    ]).casefold()
+    """Map the crawler's canonical topic slug to an existing public editorial category.
 
-    if any(term in country.casefold() for term in ("vietnam", "việt nam", "viet nam")) or top.casefold() in {"việt nam", "điểm đến việt nam"}:
-        return "Điểm đến Việt Nam"
-    if any(term in labels for term in ("hotel", "lodging", "resort", "accommodation", "hotel-review", "khách sạn")):
-        return "Khách sạn & Resort"
-    if any(term in labels for term in ("food", "culinary", "cuisine", "restaurant", "ẩm thực", "food-culture", "gastronomy")):
-        return "Ẩm thực"
-    if top in {"Thế giới", "Cẩm nang", "Ẩm thực", "Kinh nghiệm du lịch", "Điểm đến Việt Nam", "Khách sạn & Resort"}:
-        return top
-    if country and country.casefold() not in {"world / chưa phân loại", "world", "chưa phân loại"}:
-        return "Thế giới"
-    if any(term in labels for term in ("travel-tips", "tips", "itinerary", "travel-guide", "guide")):
-        return "Kinh nghiệm du lịch"
+    Geography (country/city) is stored separately; it must not override article topic.
+    """
+    primary = clean(article.get("primary_category")).casefold()
+    topic_map = {
+        "travel-guide": "Cẩm nang",
+        "travel-tips": "Kinh nghiệm du lịch",
+        "things-to-do": "Check-in",
+        "food-and-drink": "Ẩm thực",
+        "hotel-review": "Hotel review",
+        "itinerary": "Lịch trình",
+        "transport": "Di chuyển",
+        "culture-local-life": "Văn hóa & địa phương",
+        "budget-travel": "Chi phí & ngân sách",
+        "destination-news": "Tin du lịch",
+        "outdoor-adventure": "Điểm đến",
+        "family-travel": "Kinh nghiệm du lịch",
+        "sustainable-travel": "Văn hóa & địa phương",
+        "luxury-travel": "Hotel review",
+        "beach-island": "Check-in",
+    }
+    if primary in topic_map:
+        return topic_map[primary]
+
+    for topic in _parse_list(article.get("topic_categories")):
+        mapped = topic_map.get(clean(topic).casefold())
+        if mapped:
+            return mapped
+
+    top = clean(article.get("top_level_section") or "")
+    top_map = {
+        "Thế giới": "Điểm đến",
+        "Cẩm nang": "Cẩm nang",
+        "Ẩm thực": "Ẩm thực",
+        "Khách sạn & lưu trú": "Hotel review",
+        "Khách sạn & Resort": "Hotel review",
+        "Điểm check-in": "Check-in",
+        "Lịch trình": "Lịch trình",
+        "Kinh nghiệm du lịch": "Kinh nghiệm du lịch",
+    }
+    if top in top_map:
+        return top_map[top]
+
+    country = clean(article.get("destination_country") or "").casefold()
+    if country and country not in {"world / chưa phân loại", "world", "chưa phân loại"}:
+        return "Điểm đến"
     return "Cẩm nang"
 
 
