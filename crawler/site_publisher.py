@@ -338,7 +338,7 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
     category_map = {
         "cẩm nang": "travel-guide",
         "kinh nghiệm du lịch": "travel-tips",
-        "điểm đến": "outdoor-adventure",
+        "điểm đến": "travel-guide",
         "check-in": "things-to-do",
         "ẩm thực": "food-and-drink",
         "hotel review": "hotel-review",
