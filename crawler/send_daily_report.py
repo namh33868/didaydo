@@ -149,6 +149,10 @@ def _build_html(report: dict, job_status: str, run_url: str) -> str:
     duplicate_count = int(report.get("duplicate_skipped_count") or 0)
     irrelevant_count = int(report.get("irrelevant_skipped_count") or 0)
     retry_count = int(report.get("retry_candidate_count") or 0)
+    image_backfill_checked = int(report.get("image_backfill_checked") or 0)
+    image_backfill_updated = int(report.get("image_backfill_updated") or 0)
+    image_backfill_unmatched = int(report.get("image_backfill_unmatched") or 0)
+    image_backfill_failed = int(report.get("image_backfill_failed") or 0)
     failed_articles = int(report.get("failed_count") or 0)
     duration = _duration(report.get("duration_seconds"))
     recovered = int(report.get("recovered_count") or 0)
@@ -242,6 +246,9 @@ def _build_html(report: dict, job_status: str, run_url: str) -> str:
           <tr><td>URL trùng/đã biết được bỏ qua</td><td align="right"><strong>{duplicate_count}</strong></td></tr>
           <tr><td>Bài ngoài danh mục biên tập được bỏ qua</td><td align="right"><strong>{irrelevant_count}</strong></td></tr>
           <tr><td>Bài cũ được đưa vào hàng đợi thử lại</td><td align="right"><strong>{retry_count}</strong></td></tr>
+          <tr><td>Bài đã rà ảnh đại diện cũ</td><td align="right"><strong>{image_backfill_checked}</strong></td></tr>
+          <tr><td>Bài cũ đã bổ sung ảnh</td><td align="right"><strong>{image_backfill_updated}</strong></td></tr>
+          <tr><td>Chưa tìm được ảnh / lỗi bổ sung</td><td align="right"><strong>{image_backfill_unmatched} / {image_backfill_failed}</strong></td></tr>
           <tr><td>Bài lỗi/chưa publish</td><td align="right"><strong>{failed_articles}</strong></td></tr>
         </table>
         {failure_table}
@@ -272,6 +279,7 @@ def _build_text(report: dict, job_status: str, run_url: str) -> str:
         f"Mục tiêu: {report.get('minimum', 3)} tối thiểu / {report.get('preferred', 5)} mong muốn / {report.get('maximum', 10)} tối đa",
         f"Nguồn RSS: {report.get('successful_feed_count', 0)} đọc được; {report.get('failed_feed_count', 0)} lỗi; {report.get('candidate_url_count', 0)} URL ứng viên",
         f"Xử lý: {report.get('attempted_url_count', 0)} URL đã thử; {report.get('processed_article_count', 0)} bài đã xử lý; {report.get('duplicate_skipped_count', 0)} URL trùng; {report.get('irrelevant_skipped_count', 0)} bài ngoài danh mục; {report.get('failed_count', 0)} bài lỗi",
+        f"Ảnh bài cũ: đã rà {report.get('image_backfill_checked', 0)}; bổ sung {report.get('image_backfill_updated', 0)}; chưa tìm được {report.get('image_backfill_unmatched', 0)}; lỗi {report.get('image_backfill_failed', 0)}",
         f"Thời gian crawler: {_duration(report.get('duration_seconds'))}",
         "",
         "BÀI ĐÃ PUBLISH:",
@@ -357,6 +365,7 @@ def main() -> int:
             f"- Đã publish: **{count} bài** (mục tiêu {report.get('minimum', 3)}/{report.get('preferred', 5)}/{report.get('maximum', 10)})",
             f"- RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi / {report.get('candidate_url_count', 0)} URL ứng viên",
             f"- Xử lý: {report.get('attempted_url_count', 0)} URL đã thử / {report.get('processed_article_count', 0)} bài đã xử lý / {report.get('irrelevant_skipped_count', 0)} bài ngoài danh mục / {report.get('failed_count', 0)} bài lỗi",
+            f"- Ảnh bài cũ: rà {report.get('image_backfill_checked', 0)} / bổ sung {report.get('image_backfill_updated', 0)} / chưa tìm được {report.get('image_backfill_unmatched', 0)}",
             f"- Thời gian: {_duration(report.get('duration_seconds'))}",
         ]
         for item in articles:
