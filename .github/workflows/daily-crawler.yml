@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m py_compile main.py site_publisher.py sync_to_site.py daily_runner.py
+          python -m py_compile main.py site_publisher.py sync_to_site.py daily_runner.py send_daily_report.py
           python daily_runner.py --limit 10 2>&1 | tee logs/daily-crawl.log
 
       - name: Save crawl history even if the run fails
@@ -131,6 +131,8 @@ jobs:
         if: always()
         working-directory: crawler
         env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
           REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
