@@ -290,7 +290,24 @@ def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
         selected = None
 
     if selected is None:
-        selected = find_cover_image(article)
+        used_urls = set()
+        try:
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                rows = conn.execute(
+                    "SELECT source_images_json FROM articles WHERE source_url<>? AND COALESCE(source_images_json, '')<>''",
+                    (source_url,),
+                ).fetchall()
+            for (raw_images,) in rows:
+                try:
+                    parsed_images = json.loads(raw_images or "[]")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if isinstance(parsed_images, list):
+                    used_urls.update(clean(item.get("url")) for item in parsed_images
+                                     if isinstance(item, dict) and clean(item.get("url")).startswith("https://"))
+        except sqlite3.Error as exc:
+            log.warning("Không đọc được lịch sử ảnh đã dùng (%s); tiếp tục tìm ảnh mới", type(exc).__name__)
+        selected = find_cover_image(article, exclude_urls=used_urls)
     if not selected:
         return None
 
