@@ -63,17 +63,17 @@ export function CopyrightReportForm() {
             <option value="other">Tư cách khác (vui lòng giải thích bên dưới)</option>
           </select>
         </label>
-        <label className="copyright-form-full">Tên tác phẩm gốc
+        <label className="copyright-form-full">Tên tác phẩm / tài sản bị ảnh hưởng
           <input value={form.workTitle} onChange={(e) => update("workTitle", e.target.value)} maxLength={180} placeholder="Tên bài viết, bộ ảnh, tác phẩm..." />
         </label>
-        <label className="copyright-form-full">URL tác phẩm gốc / nơi chứng minh quyền sở hữu
+        <label className="copyright-form-full">URL bản gốc / tài liệu giúp xác minh quyền
           <input type="url" value={form.originalWorkUrl} onChange={(e) => update("originalWorkUrl", e.target.value)} maxLength={2000} placeholder="https://..." />
         </label>
-        <label className="copyright-form-full">URL nội dung trên Đi Đây Đó bị cho là vi phạm *
+        <label className="copyright-form-full">URL nội dung trên Đi Đây Đó bị phản ánh *
           <input type="url" value={form.reportedUrl} onChange={(e) => update("reportedUrl", e.target.value)} required maxLength={2000} placeholder="https://didaydo.vercel.app/bai-viet/..." />
         </label>
-        <label className="copyright-form-full">Mô tả quyền của bạn và phần nội dung bị ảnh hưởng *
-          <textarea value={form.details} onChange={(e) => update("details", e.target.value)} required minLength={30} maxLength={5000} rows={5} placeholder="Nêu rõ nội dung cụ thể, vị trí xuất hiện, căn cứ bạn sở hữu/được ủy quyền và tài liên hệ..." />
+        <label className="copyright-form-full">Mô tả nội dung bị phản ánh và căn cứ gửi thông báo *
+          <textarea value={form.details} onChange={(e) => update("details", e.target.value)} required minLength={30} maxLength={5000} rows={5} placeholder="Nêu rõ vị trí nội dung, căn cứ quyền hoặc ủy quyền và thông tin giúp chúng tôi xác minh..." />
         </label>
       </div>
       <label className="copyright-honeypot" aria-hidden="true">Để trống trường này
@@ -81,11 +81,11 @@ export function CopyrightReportForm() {
       </label>
       <label className="copyright-declaration">
         <input type="checkbox" checked={form.declaration} onChange={(e) => update("declaration", e.target.checked)} required />
-        <span>Tôi xác nhận thông tin gửi là chính xác, tôi là chủ sở hữu quyền hoặc người được ủy quyền hợp pháp, và đồng ý Đi Đây Đó sử dụng thông tin này nhằm xác minh, xử lý báo cáo.</span>
+        <span>Tôi xác nhận thông tin gửi là chính xác và dựa trên thiện chí; tôi là chủ sở hữu quyền, người được ủy quyền hoặc có căn cứ hợp pháp để gửi thông báo này. Tôi đồng ý Đi Đây Đó sử dụng thông tin nhằm xác minh và xử lý yêu cầu.</span>
       </label>
       {(error || message) && <p className={error ? "copyright-form-error" : "copyright-form-success"} role="status">{error || message}</p>}
-      <button className="button-primary" type="submit" disabled={busy || !form.declaration}><Send size={15}/>{busy ? "Đang gửi..." : "Gửi báo cáo bản quyền"}</button>
-      <p className="copyright-form-note"><ShieldCheck size={14}/> Báo cáo được xem xét thủ công. Việc gửi báo cáo không tự động khiến nội dung bị gỡ bỏ.</p>
+      <button className="button-primary" type="submit" disabled={busy || !form.declaration}><Send size={15}/>{busy ? "Đang gửi..." : "Gửi thông báo"}</button>
+      <p className="copyright-form-note"><ShieldCheck size={14}/> Mỗi thông báo được xem xét thủ công. Việc gửi báo cáo không tự động khiến nội dung bị gỡ bỏ.</p>
     </form>
   );
 }
