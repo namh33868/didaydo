@@ -21,7 +21,7 @@ const topics = [
 
 export default async function HomePage() {
   // Keep the hero focused while fetching enough published stories to build a substantial homepage.
-  const [featuredPosts, latest, countries] = await Promise.all([getFeaturedPosts(4), getRecentPosts(40), getCountries()]);
+  const [featuredPosts, latest, countries] = await Promise.all([getFeaturedPosts(8), getRecentPosts(40), getCountries()]);
   const activeCountries = countries.filter((country) => country.post_count > 0);
   const featuredSlugs = new Set(featuredPosts.map((post) => post.slug));
   const nonFeatured = latest.filter((post) => !featuredSlugs.has(post.slug));
