@@ -123,14 +123,15 @@ def main():
     new_published = 0
     ai_quota_stop = False
     failed = 0
+    crawler_result = {}
     if remaining > 0:
         # The crawler targets the daily ceiling, not a fixed quota. It stops early
         # only when all configured AI providers have hit a capacity/auth failure.
-        result = bot.main(["--limit", str(remaining)]) or {}
-        new_published = int(result.get("published_count", 0) or 0)
-        failed = int(result.get("failed", 0) or 0)
-        ai_quota_stop = bool(result.get("ai_quota_stop"))
-        published_articles.extend(result.get("published_articles") or [])
+        crawler_result = bot.main(["--limit", str(remaining)]) or {}
+        new_published = int(crawler_result.get("published_count", 0) or 0)
+        failed = int(crawler_result.get("failed", 0) or 0)
+        ai_quota_stop = bool(crawler_result.get("ai_quota_stop"))
+        published_articles.extend(crawler_result.get("published_articles") or [])
     else:
         bot._reconcile_site_publications()
         bot.cleanup_published_artifacts()
@@ -139,18 +140,58 @@ def main():
     total_published = recovered_published + new_published
     _log_daily_tier(total_published)
 
+    discovery = crawler_result.get("discovery") if isinstance(crawler_result.get("discovery"), dict) else {}
+    feed_errors = discovery.get("feed_errors") if isinstance(discovery.get("feed_errors"), list) else []
+    feed_stats = discovery.get("feed_stats") if isinstance(discovery.get("feed_stats"), list) else []
+    failure_items = crawler_result.get("failure_items") if isinstance(crawler_result.get("failure_items"), list) else []
+    candidate_url_count = int(crawler_result.get("candidate_url_count", discovery.get("candidate_urls", 0)) or 0)
+    attempted_urls = int(crawler_result.get("attempted", 0) or 0)
+    processed_articles = int(crawler_result.get("processed_articles", 0) or 0)
+    duplicate_skipped_count = int(crawler_result.get("duplicate_skipped_count", 0) or 0)
+    duration_seconds = float(crawler_result.get("duration_seconds", 0) or 0)
+
+    if ai_quota_stop:
+        report_status = "quota_limited"
+    elif total_published == 0 and int(discovery.get("failed_feeds", 0) or 0) > 0 and candidate_url_count == 0:
+        report_status = "source_error"
+    elif total_published == 0 and attempted_urls == 0:
+        report_status = "no_new_articles"
+    elif total_published == 0:
+        report_status = "no_posts"
+    elif total_published < minimum:
+        report_status = "below_minimum"
+    elif failed or feed_errors:
+        report_status = "warning"
+    else:
+        report_status = "completed"
+
     report = {
         "date": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d"),
         "generated_at": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat(),
-        "status": "quota_limited" if ai_quota_stop else ("warning" if failed or total_published < minimum else "completed"),
+        "status": report_status,
         "minimum": minimum,
         "preferred": preferred,
         "maximum": maximum,
         "published_count": total_published,
         "failed_count": failed,
         "recovered_count": recovered_published,
+        "new_published_count": new_published,
+        "enabled_source_count": int(discovery.get("enabled_sources", 0) or 0),
+        "successful_feed_count": int(discovery.get("successful_feeds", 0) or 0),
+        "failed_feed_count": int(discovery.get("failed_feeds", 0) or 0),
+        "feeds_with_items_count": int(discovery.get("feeds_with_items", 0) or 0),
+        "candidate_url_count": candidate_url_count,
+        "attempted_url_count": attempted_urls,
+        "processed_article_count": processed_articles,
+        "duplicate_skipped_count": duplicate_skipped_count,
+        "retry_candidate_count": int(discovery.get("retry_candidates", 0) or 0),
+        "duration_seconds": duration_seconds,
         "ai_quota_stop": ai_quota_stop,
+        "site_url": site_publisher.SITE_URL,
         "articles": published_articles,
+        "feed_stats": feed_stats[:30],
+        "feed_errors": feed_errors[:20],
+        "failures": failure_items[:20],
     }
     report_dir = Path(bot.PROJECT_DIR) / "logs"
     report_dir.mkdir(parents=True, exist_ok=True)
