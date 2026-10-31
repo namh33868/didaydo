@@ -309,6 +309,116 @@ def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
     return selected
 
 
+def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) -> dict:
+    """Add licensed cover images to older published crawler posts that lack one."""
+    if not SITE_SYNC_ENABLED or not SITE_URL or not SITE_INGEST_API_KEY:
+        return {"checked": 0, "updated": 0, "unmatched": 0, "failed": 0, "skipped": True}
+
+    from image_finder import find_cover_image
+
+    _check_api_ready()
+    maximum = max(1, min(int(limit), 25))
+    try:
+        response = requests.get(
+            _endpoint(),
+            params={"missingCover": "1", "limit": maximum},
+            headers=_headers(),
+            timeout=(5, SITE_API_TIMEOUT),
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        log.warning("Không tải được danh sách bài thiếu ảnh để bù ảnh (%s)", type(exc).__name__)
+        return {"checked": 0, "updated": 0, "unmatched": 0, "failed": 1, "error": type(exc).__name__}
+
+    posts = data.get("posts") if isinstance(data, dict) else []
+    if not isinstance(posts, list):
+        posts = []
+
+    category_map = {
+        "cẩm nang": "travel-guide",
+        "kinh nghiệm du lịch": "travel-tips",
+        "điểm đến": "outdoor-adventure",
+        "check-in": "things-to-do",
+        "ẩm thực": "food-and-drink",
+        "hotel review": "hotel-review",
+        "lịch trình": "itinerary",
+        "di chuyển": "transport",
+        "văn hóa & địa phương": "culture-local-life",
+        "chi phí & ngân sách": "budget-travel",
+        "tin du lịch": "destination-news",
+    }
+    result = {"checked": len(posts), "updated": 0, "unmatched": 0, "failed": 0, "items": []}
+
+    for post in posts:
+        source_url = clean(post.get("source_url"))
+        title = clean(post.get("title"))
+        if not source_url or not title:
+            result["failed"] += 1
+            continue
+
+        article = {
+            "source_url": source_url,
+            "source_title": title,
+            "source_summary": clean(post.get("excerpt")),
+            "destination_country": clean(post.get("country_name")),
+            "destination_city": clean(post.get("destination_name")),
+            "primary_category": category_map.get(clean(post.get("category_name")).casefold(), "travel-guide"),
+        }
+        try:
+            cover = find_cover_image(article)
+            if not cover:
+                result["unmatched"] += 1
+                result["items"].append({"title": title[:160], "status": "no_licensed_match"})
+                continue
+
+            payload = {
+                "title": title,
+                "excerpt": clean(post.get("excerpt")),
+                "coverImage": clean(cover.get("url")),
+                "coverAlt": clean(cover.get("alt") or title)[:300],
+                "coverCredit": _cover_credit(cover),
+                "country": clean(post.get("country_name")),
+                "destination": clean(post.get("destination_name")),
+                "category": clean(post.get("category_name")) or "Cẩm nang",
+                "tags": post.get("tags") if isinstance(post.get("tags"), list) else [],
+                "authorName": "Ban biên tập",
+                "sourceUrl": source_url,
+                "sourceName": clean(post.get("source_name")),
+                "seoTitle": clean(post.get("seo_title") or title),
+                "seoDescription": clean(post.get("seo_description") or post.get("excerpt")),
+                "status": "published",
+            }
+            if not payload["coverImage"].startswith("https://"):
+                raise ValueError("Ảnh đại diện không phải URL HTTPS.")
+
+            update_response = requests.post(
+                _endpoint(), headers=_headers(), json=payload,
+                timeout=(8, SITE_API_TIMEOUT),
+            )
+            update_response.raise_for_status()
+            update_data = update_response.json()
+            if not update_data.get("success") or int(update_data.get("failed", 0) or 0) > 0:
+                raise RuntimeError("Website từ chối cập nhật ảnh đại diện.")
+            result["updated"] += 1
+            result["items"].append({
+                "title": title[:160],
+                "status": "updated",
+                "image_scope": cover.get("image_scope"),
+                "provider": cover.get("provider") or cover.get("source_name"),
+            })
+            log.info(
+                "Đã bổ sung ảnh đại diện cho bài cũ: title=%s scope=%s",
+                title[:120], cover.get("image_scope"),
+            )
+        except Exception as exc:
+            result["failed"] += 1
+            result["items"].append({"title": title[:160], "status": "failed", "error": type(exc).__name__})
+            log.warning("Không bổ sung được ảnh cho bài cũ '%s' (%s)", title[:100], type(exc).__name__)
+
+    return result
+
+
 def build_site_payload(article: dict, draft: dict) -> dict:
     title = clean(draft.get("seo_title") or article.get("source_title"))[:220]
     content_html = draft.get("seo_content") or ""
