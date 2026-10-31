@@ -93,6 +93,8 @@ def _destination_terms(article: dict) -> list[str]:
     normalized = _normalise(city)
     aliases = {
         "ha long": ["Ha Long Bay"],
+        "vinh ha long": ["Ha Long Bay", "Ha Long"],
+        "halong": ["Ha Long Bay", "Ha Long"],
         "hoi an": ["Hoi An Ancient Town"],
         "ho chi minh": ["Ho Chi Minh City", "Saigon"],
         "ho chi minh city": ["Saigon"],
