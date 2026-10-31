@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS posts (
   tags TEXT[] NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
   featured BOOLEAN NOT NULL DEFAULT FALSE,
+  featured_until TIMESTAMPTZ,
   author_name TEXT NOT NULL DEFAULT 'Ban biên tập',
   created_by UUID REFERENCES admin_users(id) ON DELETE SET NULL,
   updated_by UUID REFERENCES admin_users(id) ON DELETE SET NULL,
@@ -110,6 +111,9 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 
 -- Safe, additive migrations for installations that were initialized with the earlier schema.
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS featured_until TIMESTAMPTZ;
+UPDATE posts SET featured_until = NOW() + INTERVAL '7 days' WHERE featured = TRUE AND featured_until IS NULL;
+CREATE INDEX IF NOT EXISTS posts_featured_until_idx ON posts (featured, featured_until DESC);
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS cover_credit TEXT NOT NULL DEFAULT '';
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES admin_users(id) ON DELETE SET NULL;
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES admin_users(id) ON DELETE SET NULL;
