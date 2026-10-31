@@ -7,7 +7,7 @@ import { EDITORIAL_CATEGORIES, normalizeEditorialCategory } from "@/lib/editoria
 
 type AdminPost = {
   id: string; title: string; slug: string; excerpt: string; contentHtml: string; coverImage: string; coverAlt: string;
-  category: string; country: string; destination: string; coverCredit: string; tags: string[]; status: "draft" | "published" | "archived"; featured: boolean; authorName: string;
+  category: string; country: string; destination: string; coverCredit: string; tags: string[]; status: "draft" | "published" | "archived"; featured: boolean; featuredUntil: string | null; authorName: string;
   sourceUrl: string; sourceName: string; seoTitle: string; seoDescription: string; publishedAt: string | null; createdAt: string;
 };
 type IngestLog = { id: string; source: string; received_count: number; created_count: number; updated_count: number; failed_count: number; status: string; createdAt: string };
