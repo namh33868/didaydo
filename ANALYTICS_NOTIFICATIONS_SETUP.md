@@ -2,15 +2,32 @@
 
 ## 1. Email báo cáo xuất bản
 
-Repository đã có bước gửi báo cáo cuối mỗi lượt GitHub Actions bằng Resend. Báo cáo gồm số bài đã xuất bản, mục tiêu 3/5/10, bài lỗi/quota và link từng bài. Nếu chưa cấu hình email, GitHub Actions vẫn ghi báo cáo trong phần Summary và lưu log.
+Repository đã có bước gửi báo cáo sau mỗi lượt GitHub Actions. Báo cáo gồm số bài đã xuất bản, mục tiêu 3/5/10, bài lỗi/quota và link từng bài. GitHub Actions Summary vẫn có báo cáo nếu chưa bật email.
 
-Tạo tài khoản Resend, xác minh domain gửi email theo hướng dẫn của Resend, sau đó thêm các GitHub repository secrets sau:
+### Dùng Gmail (khuyến nghị khi muốn gửi từ hộp thư Gmail cá nhân)
 
-- `RESEND_API_KEY`: API key của Resend.
-- `REPORT_EMAIL_TO`: email nhận báo cáo.
-- `REPORT_EMAIL_FROM`: địa chỉ người gửi thuộc domain đã xác minh, ví dụ `Đi Đây Đó <bot@your-domain.com>`.
+Kết nối Gmail trong ChatGPT không tự cấp quyền gửi thư cho GitHub Actions. Crawler chạy trên GitHub nên cần thông tin SMTP riêng.
 
-Mở **GitHub → namh33868/didaydo → Settings → Secrets and variables → Actions → New repository secret** để thêm từng secret. Không đưa API key vào file hoặc commit.
+1. Đăng nhập Google Account → **Security** → bật **2-Step Verification**.
+2. Vào **App passwords**: https://myaccount.google.com/apppasswords.
+3. Tạo App Password tên `Didaydo GitHub Actions`, sao chép mã 16 ký tự.
+4. Trong **GitHub → namh33868/didaydo → Settings → Secrets and variables → Actions**, tạo:
+   - `GMAIL_USERNAME`: địa chỉ Gmail đầy đủ dùng để gửi.
+   - `GMAIL_APP_PASSWORD`: App Password 16 ký tự vừa tạo, không phải mật khẩu đăng nhập Gmail.
+   - `REPORT_EMAIL_TO`: địa chỉ email nhận báo cáo (có thể là cùng Gmail).
+5. Không đưa App Password vào code, .env đã commit, Issue hoặc chat.
+
+Gmail SMTP dùng `smtp.gmail.com`, cổng 587 và TLS. Nếu Google không hiển thị App passwords, tài khoản có thể không đủ điều kiện (ví dụ cấu hình bảo mật chỉ dùng security key, Advanced Protection hoặc chính sách quản trị Workspace). Xem hướng dẫn chính thức: https://support.google.com/mail/answer/185833.
+
+### Dùng Resend thay thế
+
+Nếu không muốn dùng Gmail SMTP, tạo tài khoản Resend, xác minh domain gửi email rồi thêm:
+- `RESEND_API_KEY`
+- `REPORT_EMAIL_TO`
+- `REPORT_EMAIL_FROM` (địa chỉ thuộc domain đã xác minh).
+
+Khi cả Gmail và Resend được cấu hình, crawler ưu tiên Gmail.
+
 
 ## 2. Google Analytics 4
 
