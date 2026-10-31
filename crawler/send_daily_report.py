@@ -111,7 +111,12 @@ def _table_rows(rows: list[dict], *, source_rows: bool = False) -> str:
         else:
             title = _esc(item.get("title") or "Bài viết chưa rõ tiêu đề")
             source = _esc(item.get("source") or "Không rõ nguồn")
-            stage = _esc(item.get("stage") or "processing")
+            stage_key = str(item.get("stage") or "processing")
+            stage = _esc({
+                "ai": "Tạo nội dung AI",
+                "publish": "Đăng lên website",
+                "extract_or_process": "Đọc/trích xuất bài nguồn",
+            }.get(stage_key, stage_key))
             reason = _esc(item.get("reason") or "Không có mô tả lỗi")
             rendered.append(
                 f"<tr><td>{title}</td><td>{source}</td><td>{stage}</td><td>{reason}</td></tr>"
@@ -165,7 +170,7 @@ def _build_html(report: dict, job_status: str, run_url: str) -> str:
         source_table = f"""
         <h3 style="margin:24px 0 8px">Nguồn RSS gặp lỗi ({len(feed_errors)})</h3>
         <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:#f3f4f6"><th align="left">Nguồn</th><th align="left">Kết quả</th><th align="right">URL</th><th align="left">Lý do</th></tr></thead>
+          <thead><tr style="background:#f3f4f6"><th align="left">Nguồn</th><th align="left">Kết quả</th><th align="right">Bài trong feed</th><th align="left">Lý do</th></tr></thead>
           <tbody>{_table_rows(feed_errors[:15], source_rows=True)}</tbody>
         </table>
         {"<p style='font-size:12px;color:#6b7280'>Chỉ hiển thị tối đa 15 nguồn lỗi đầu tiên.</p>" if len(feed_errors)>15 else ""}
