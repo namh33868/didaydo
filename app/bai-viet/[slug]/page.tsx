@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight, Clock3, MapPin } from "lucide-react";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PostCard } from "@/components/PostCard";
+import { CoverAttribution } from "@/components/CoverAttribution";
 import { getPostBySlug, getRelatedPosts } from "@/lib/posts";
 import { formatDate, readingMinutes, slugify } from "@/lib/format";
 import { absoluteUrl, siteName } from "@/lib/seo";
@@ -119,7 +120,7 @@ export default async function ArticlePage({ params }: Props) {
 
           {post.cover_image && <figure className="article-cover">
             <div className="article-cover-image"><Image src={post.cover_image} alt={post.cover_alt || post.title} fill priority sizes="(max-width: 800px) 100vw, 800px" /></div>
-            {post.cover_credit && <figcaption>{post.cover_credit}</figcaption>}
+            {post.cover_credit && <CoverAttribution credit={post.cover_credit} />}
           </figure>}
 
           {article.toc.length > 1 && <nav className="article-toc-mobile" aria-label="Mục lục bài viết"><b>Trong bài viết này</b><ul>{article.toc.map((item) => <li key={item.id} className={item.level === 3 ? "toc-level-3" : ""}><a href={`#${item.id}`}>{item.title}</a></li>)}</ul></nav>}
