@@ -23,7 +23,7 @@ async function authorizeReviewer() {
   const session = await getAdminSession();
   if (!session) return { response: NextResponse.json({ error: "Cần đăng nhập." }, { status: 401 }) };
   if (!hasPermission(session.role, "posts:publish")) {
-    return { response: NextResponse.json({ error: "Chỉ quắn trị viên và biên tập viên được xem báo cáo bạn quyền." }, { status: 403 }) };
+    return { response: NextResponse.json({ error: "Chỉ quản trị viên và biên tập viên được xem các thông báo vi phạm." }, { status: 403 }) };
   }
   return { response: null };
 }
