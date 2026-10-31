@@ -107,6 +107,7 @@ jobs:
         run: |
           set -o pipefail
           python -m py_compile main.py site_publisher.py sync_to_site.py daily_runner.py send_daily_report.py
+          python -c "from bs4 import BeautifulSoup; root=BeautifulSoup('<rss><channel><item><title>parser-check</title></item></channel></rss>', 'xml'); assert root.find('item') and root.find('title').text == 'parser-check'; print('XML RSS parser OK')"
           python daily_runner.py --limit 10 2>&1 | tee logs/daily-crawl.log
 
       - name: Save crawl history even if the run fails
