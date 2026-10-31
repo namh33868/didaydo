@@ -245,10 +245,26 @@ def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
     """Reuse a cached, license-checked cover or find one; persist it for safe retries."""
     from image_finder import find_cover_image, is_license_allowed, verify_image_url
 
+    source_url = normalize_source_url(article.get("source_url", ""))
+    stored_images = _stored_image_list(article)
+    if source_url:
+        try:
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                row = conn.execute(
+                    "SELECT source_images_json FROM articles WHERE source_url=?",
+                    (source_url,),
+                ).fetchone()
+            if row and row[0]:
+                cached_images = json.loads(row[0])
+                if isinstance(cached_images, list):
+                    stored_images = [item for item in cached_images if isinstance(item, dict)]
+        except (sqlite3.Error, TypeError, json.JSONDecodeError):
+            pass
+
     existing = article.get("editorial_cover_image")
     if not isinstance(existing, dict):
         existing = next(
-            (item for item in _stored_image_list(article)
+            (item for item in stored_images
              if item.get("is_cover") is True and item.get("rights_status") == "license_metadata_checked"),
             None,
         )
@@ -276,14 +292,13 @@ def _ensure_editorial_cover_image(article: dict, db_path: str) -> dict | None:
         return None
 
     article["editorial_cover_image"] = selected
-    images = _stored_image_list(article)
+    images = stored_images
     images = [item for item in images if item.get("image_id") != "COVER_LIBRARY"]
     images.append(selected)
     serialized = json.dumps(images, ensure_ascii=False)
     article["source_images"] = images
     article["source_images_json"] = serialized
 
-    source_url = normalize_source_url(article.get("source_url", ""))
     if source_url:
         with sqlite3.connect(db_path, timeout=30) as conn:
             conn.execute(
