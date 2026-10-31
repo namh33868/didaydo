@@ -7,7 +7,7 @@ export const postInputSchema = z.object({
   contentHtml: z.string().max(500_000).optional().default(""),
   coverImage: z.string().trim().max(2000).optional().default("").refine((value) => !value || /^https:\/\//i.test(value), "Ảnh đại diện phải là URL HTTPS."),
   coverAlt: z.string().trim().max(300).optional().default(""),
-  coverCredit: z.string().trim().max(300).optional().default(""),
+  coverCredit: z.string().trim().max(1200).optional().default(""),
   country: z.string().trim().max(120).optional().default(""),
   destination: z.string().trim().max(120).optional().default(""),
   category: z.string().trim().max(100).optional().default("Cẩm nang"),
