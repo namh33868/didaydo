@@ -240,9 +240,16 @@ def verify_image_url(url: str) -> bool:
         return False
 
 
+def _ext_value(metadata: dict, key: str) -> str:
+    value = metadata.get(key, "")
+    if isinstance(value, dict):
+        value = value.get("value", "")
+    return _plain(value)
+
+
 def _commons_artist(metadata: dict) -> tuple[str, str]:
-    raw = metadata.get("Artist", {}).get("value", "") if isinstance(metadata.get("Artist"), dict) else ""
-    soup = BeautifulSoup(str(raw), "html.parser")
+    raw = _ext_value(metadata, "Artist")
+    soup = BeautifulSoup(raw, "html.parser")
     anchor = soup.find("a", href=True)
     creator_url = anchor.get("href", "") if anchor else ""
     creator = soup.get_text(" ", strip=True)
@@ -283,15 +290,15 @@ def _commons_candidates(query: str) -> list[dict]:
         if not _image_dimensions_ok(width, height):
             continue
         metadata = info.get("extmetadata") or {}
-        license_name = _clean_html((metadata.get("LicenseShortName") or {}).get("value", ""))
-        license_url = _plain((metadata.get("LicenseUrl") or {}).get("value", ""))
-        usage_terms = _clean_html((metadata.get("UsageTerms") or {}).get("value", ""))
+        license_name = _clean_html(_ext_value(metadata, "LicenseShortName"))
+        license_url = _plain(_ext_value(metadata, "LicenseUrl"))
+        usage_terms = _clean_html(_ext_value(metadata, "UsageTerms"))
         if not is_license_allowed(license_name or usage_terms) or not license_url.startswith("https://"):
             continue
         creator, creator_url = _commons_artist(metadata)
         if _normalise(license_name).startswith(("cc by", "cc by sa")) and not creator:
             continue
-        description = _clean_html((metadata.get("ImageDescription") or {}).get("value", ""))
+        description = _clean_html(_ext_value(metadata, "ImageDescription"))
         title = _plain(page.get("title", "")).removeprefix("File:")
         categories = [item.get("title", "") for item in (page.get("categories") or [])]
         category_text = " ".join(categories)
@@ -456,7 +463,7 @@ def find_cover_image(article: dict) -> dict | None:
             try:
                 ranked = _rank_candidates(
                     search_fn(query), place_terms, country_terms, topic_terms,
-                    require_place=True,
+                    require_place=True, require_country=bool(country_terms),
                 )
             except (requests.RequestException, ValueError, KeyError) as exc:
                 log.warning("%s location image search failed (%s)", provider_name, type(exc).__name__)
