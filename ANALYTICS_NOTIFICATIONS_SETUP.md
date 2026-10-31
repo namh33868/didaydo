@@ -22,7 +22,7 @@ Trong **Vercel → Project → Settings → Environment Variables**, thêm:
 - Value: Measurement ID dạng `G-XXXXXXXXXX`
 - Environment: Production
 
-Sau đó redeploy production. Component `GoogleAnalytics` chỉ tải Google tag khi Measurement ID hợp lệ được cấu hình. GA4 ghi nhận page views trên cả tải trang và điều hướng client-side; bật **Enhanced Measurement → Page changes based on browser history events** trong GA4 Web data stream để đo chuyển trang đúng cách.
+Sau đó redeploy production. Component `GoogleAnalytics` chỉ tải Google tag khi Measurement ID hợp lệ được cấu hình và độc giả đã chọn đồng ý cookie phân tích. Người đọc có thể đổi lựa chọn tại trang Chính sách bảo mật. GA4 ghi nhận page views trên cả tải trang và điều hướng client-side; bật **Enhanced Measurement → Page changes based on browser history events** trong GA4 Web data stream để đo chuyển trang đúng cách.
 
 Xem số liệu ở **Google Analytics → Reports**:
 - Realtime: lượt truy cập đang diễn ra.
@@ -35,3 +35,6 @@ GA4 chỉ bắt đầu có dữ liệu sau khi đã cài Measurement ID và rede
 ## 3. Lưu ý
 
 Báo cáo email là số liệu xuất bản của crawler, không phải báo cáo traffic. GA4 là nơi xem số người dùng, phiên, lượt xem và tần suất quay lại. Số liệu GA4 không được kéo tự động vào email trong phiên bản tích hợp này.
+
+
+Website có hộp lựa chọn cookie phân tích: GA4 không được tải trước khi độc giả đồng ý. Người đọc có thể mở lại lựa chọn ở trang `/chinh-sach-bao-mat`.
