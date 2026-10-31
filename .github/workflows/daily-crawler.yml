@@ -109,9 +109,13 @@ jobs:
           python -m py_compile main.py site_publisher.py image_finder.py sync_to_site.py daily_runner.py send_daily_report.py
           python -c "from bs4 import BeautifulSoup; root=BeautifulSoup('<rss><channel><item><title>parser-check</title></item></channel></rss>', 'xml'); assert root.find('item') and root.find('title').text == 'parser-check'; print('XML RSS parser OK')"
           python - <<'PY'
+          import logging
           from main import classify_article
-          from site_publisher import _category_for
+          from site_publisher import _category_for, log as publisher_log
           from image_finder import _contains_phrase, _rank_candidates, is_license_allowed, _license_allowed_code
+
+          assert isinstance(publisher_log, logging.Logger), "Site publisher logger must be initialized"
+          print("Site publisher logger smoke test OK")
 
           assert _contains_phrase("Ha Long Bay, Vietnam", "Hạ Long"), "Accent-insensitive place matching failed"
           assert not _contains_phrase("Ninh Van Bay, Vietnam", "Hạ Long"), "Different bay must not match Ha Long"
