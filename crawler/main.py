@@ -611,6 +611,9 @@ def _parse_feed_items(xml, source):
     return results
 
 
+LAST_DISCOVERY_REPORT = {}
+
+
 def _fetch_one_source_feed(source):
     name = source.get("name", source.get("id", "unknown"))
     try:
@@ -623,6 +626,17 @@ def _fetch_one_source_feed(source):
 
 def discover_from_sources():
     """Read configured English-language RSS/Atom feeds concurrently and interleave candidates."""
+    global LAST_DISCOVERY_REPORT
+    discovery_report = {
+        "enabled_sources": 0,
+        "successful_feeds": 0,
+        "failed_feeds": 0,
+        "feeds_with_items": 0,
+        "candidate_urls": 0,
+        "retry_candidates": 0,
+        "feed_stats": [],
+        "feed_errors": [],
+    }
     active_sources = []
     for source in SOURCES:
         if not source.get("enabled", False):
@@ -632,6 +646,7 @@ def discover_from_sources():
             continue
         active_sources.append(source)
 
+    discovery_report["enabled_sources"] = len(active_sources)
     per_source = []
     if active_sources:
         # Run a small bounded number of feed requests in parallel; one dead feed won't
@@ -641,10 +656,19 @@ def discover_from_sources():
         for source, items, error in results:
             name = source.get("name", source.get("id", "unknown"))
             if error:
+                discovery_report["failed_feeds"] += 1
+                feed_item = {"name": name, "status": "failed", "entries": 0, "error": error}
+                discovery_report["feed_stats"].append(feed_item)
+                discovery_report["feed_errors"].append(feed_item)
                 log.warning("Source feed lỗi; bỏ qua để tiếp tục nguồn khác: %s | %s", name, error)
                 continue
+            discovery_report["successful_feeds"] += 1
+            discovery_report["feed_stats"].append({
+                "name": name, "status": "ok", "entries": len(items), "error": "",
+            })
             log.info("Source feed=%s entries=%s", name, len(items))
             if items:
+                discovery_report["feeds_with_items"] += 1
                 per_source.append((source, items))
 
     # Round-robin across feeds; one large feed cannot occupy all MAX_ARTICLES slots.
@@ -654,6 +678,7 @@ def discover_from_sources():
         for _source, items in per_source:
             if index < len(items):
                 ordered.append(items[index])
+    discovery_report["candidate_urls"] = len(ordered)
     log.info(
         "Multi-source discovery: active_sources=%s feeds_with_items=%s candidate_urls=%s",
         len(active_sources), len(per_source), len(ordered),
@@ -701,6 +726,7 @@ def discover_from_sources():
     except sqlite3.Error as exc:
         log.warning("Không nạp được hàng đợi AI lỗi từ SQLite (%s); vẫn crawl RSS mới.", type(exc).__name__)
 
+    discovery_report["retry_candidates"] = len(retry_candidates)
     if retry_candidates:
         combined, seen_urls = [], set()
         for candidate in retry_candidates + ordered:
@@ -711,6 +737,8 @@ def discover_from_sources():
         log.info("Ưu tiên thử lại %s bài AI chưa hoàn chỉnh đã lưu trước bài RSS mới.", len(retry_candidates))
         ordered = combined
 
+    discovery_report["candidate_urls"] = len(ordered)
+    LAST_DISCOVERY_REPORT = discovery_report
     return ordered
 
 # Legacy function name retained for callers, but it now reads all configured feeds (never VnExpress).
@@ -2682,6 +2710,7 @@ def parse_main_args(argv=None):
 
 
 def main(argv=None):
+    started_at = time.monotonic()
     args = parse_main_args(argv)
     run_limit = MAX_ARTICLES if args.limit is None else max(1, min(int(args.limit), 10))
     max_attempts = min(50, run_limit * 3)
@@ -2701,6 +2730,7 @@ def main(argv=None):
     failed = 0
     ai_quota_stop = False
     published_articles = []
+    failure_items = []
 
     if not candidates:
         log.warning("Không tìm thấy ứng viên từ các RSS nguồn đang bật. Kiểm tra sources.json, kết nối mạng và feed_url; không quay lại VnExpress.")
@@ -2816,12 +2846,32 @@ def main(argv=None):
                     log.info("Bỏ qua bài website đã xử lý: status=%s slug=%s", site_result.get("status"), site_result.get("slug"))
                 elif site_result and not site_result.get("ok"):
                     failed += 1
+                    failure_items.append({
+                        "stage": "publish",
+                        "title": clean_text(draft.get("seo_title") or article.get("source_title"))[:180],
+                        "source": clean_text(article.get("source_name") or article.get("source_publisher"))[:120],
+                        "reason": clean_text(site_result.get("error", "Không rõ lỗi"))[:400],
+                    })
                     log.error("Chưa xuất bản được bài lên website: %s", site_result.get("error", "lỗi không rõ"))
                     # A connection/auth/config error affects every subsequent post; stop
                     # before spending more AI calls while the publishing endpoint is down.
                     break
             else:
                 failed += 1
+                if error_message:
+                    failure_items.append({
+                        "stage": "ai",
+                        "title": clean_text(article.get("source_title"))[:180],
+                        "source": clean_text(article.get("source_name") or article.get("source_publisher"))[:120],
+                        "reason": clean_text(error_message)[:400],
+                    })
+                else:
+                    failure_items.append({
+                        "stage": "ai",
+                        "title": clean_text(article.get("source_title"))[:180],
+                        "source": clean_text(article.get("source_name") or article.get("source_publisher"))[:120],
+                        "reason": "Không tạo được bản AI hoàn chỉnh.",
+                    })
                 log.error("Không có bản AI hoàn chỉnh; bài chưa được xuất bản: %s", canonical_url)
             processed += 1
             time.sleep(2)
@@ -2831,6 +2881,12 @@ def main(argv=None):
 
         except Exception as exc:
             failed += 1
+            failure_items.append({
+                "stage": "extract_or_process",
+                "title": clean_text(item.get("rss_title") or discovered_url)[:180],
+                "source": clean_text(item.get("source_name") or item.get("source_id"))[:120],
+                "reason": f"{type(exc).__name__}: {clean_text(str(exc))[:360]}",
+            })
             log.exception("Không xử lý được %s", discovered_url)
 
     summary = (
@@ -2850,6 +2906,12 @@ def main(argv=None):
         "ai_quota_stop": ai_quota_stop,
         "attempted": attempted,
         "published_articles": published_articles,
+        "discovery": dict(LAST_DISCOVERY_REPORT or {}),
+        "candidate_url_count": int((LAST_DISCOVERY_REPORT or {}).get("candidate_urls", len(candidates))),
+        "processed_articles": processed,
+        "duplicate_skipped_count": duplicates,
+        "failure_items": failure_items[:20],
+        "duration_seconds": round(time.monotonic() - started_at, 1),
     }
 
 
