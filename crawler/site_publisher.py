@@ -6,6 +6,7 @@ explicitly enabled auto-publish health flag from the deployed website before pos
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -15,6 +16,8 @@ from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
+
+log = logging.getLogger("travel-content-bot.site-publisher")
 
 PROJECT_DIR = Path(__file__).resolve().parent
 load_dotenv(PROJECT_DIR / ".env")
