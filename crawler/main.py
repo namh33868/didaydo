@@ -769,11 +769,32 @@ def classify_article(article, item=None):
     }
 
 
+def _is_ai_capacity_error(message):
+    """Recognize provider-wide quota/auth throttling so one exhausted run doesn't burn more calls."""
+    value = clean_text(message).casefold()
+    markers = (
+        "quota", "resource_exhausted", "429", "rate limit", "rate_limit",
+        "too many requests", "insufficient_quota", "tokens per minute",
+        "requests per minute", "daily request limit", "billing",
+        "invalid api key", "unauthorized", "authentication", "http 401", "http 403",
+    )
+    return any(marker in value for marker in markers)
+
+
 def already_seen(url):
+    """Skip known aliases/duplicates and completed records, but allow incomplete AI failures to retry."""
     url = normalize_url(url) or url
     with sqlite3.connect(DATABASE_PATH, timeout=30) as conn:
         row = conn.execute(
-            "SELECT 1 FROM seen_sources WHERE source_url=? UNION SELECT 1 FROM articles WHERE source_url=? LIMIT 1",
+            """SELECT 1 FROM seen_sources WHERE source_url=?
+               UNION
+               SELECT 1 FROM articles
+               WHERE source_url=?
+                 AND (
+                     (COALESCE(seo_title,'')<>'' AND COALESCE(seo_content,'')<>'')
+                     OR status IN ('published','duplicate','canonical_alias','duplicate_title')
+                 )
+               LIMIT 1""",
             (url, url),
         ).fetchone()
         return row is not None
@@ -795,28 +816,31 @@ def remember_source(url, key="", day="", status="seen", duplicate_of=None):
         conn.commit()
 
 
-def find_duplicate_by_title(title, published_at):
-    """Khử trùng lớp 2: tiêu đề chuẩn hóa + ngày đăng, cho URL biến thể."""
+def find_duplicate_by_title(title, published_at, exclude_source_url=None):
+    """Khử trùng tiêu đề/ngày, nhưng không coi chính bản ghi lỗi đang được thử lại là bản trùng."""
     key = title_key(title)
     day = normalize_published_day(published_at)
     if not key:
         return None
+    excluded_url = normalize_url(exclude_source_url) if exclude_source_url else None
     with sqlite3.connect(DATABASE_PATH, timeout=30) as conn:
         if day:
-            # Date-aware comparison allows cross-source syndication duplicates on the same date.
             row = conn.execute(
                 """SELECT source_url, source_title, published_day FROM articles
-                   WHERE title_key=? AND (published_day=? OR published_day IS NULL OR published_day='')
+                   WHERE title_key=?
+                     AND (published_day=? OR published_day IS NULL OR published_day='')
+                     AND (? IS NULL OR source_url<>?)
                    ORDER BY id ASC LIMIT 1""",
-                (key, day),
+                (key, day, excluded_url, excluded_url),
             ).fetchone()
         else:
-            # Without a date, do not incorrectly suppress a future article with the same common title.
             row = conn.execute(
                 """SELECT source_url, source_title, published_day FROM articles
-                   WHERE title_key=? AND (published_day IS NULL OR published_day='')
+                   WHERE title_key=?
+                     AND (published_day IS NULL OR published_day='')
+                     AND (? IS NULL OR source_url<>?)
                    ORDER BY id ASC LIMIT 1""",
-                (key,),
+                (key, excluded_url, excluded_url),
             ).fetchone()
     if not row:
         return None
@@ -2620,6 +2644,7 @@ def main(argv=None):
     attempted = 0
     duplicates = 0
     failed = 0
+    ai_quota_stop = False
 
     if not candidates:
         log.warning("Không tìm thấy ứng viên từ các RSS nguồn đang bật. Kiểm tra sources.json, kết nối mạng và feed_url; không quay lại VnExpress.")
@@ -2658,7 +2683,8 @@ def main(argv=None):
                 continue
 
             duplicate = find_duplicate_by_title(
-                article["source_title"], article.get("published_at")
+                article["source_title"], article.get("published_at"),
+                exclude_source_url=canonical_url,
             )
             if duplicate:
                 # Đánh dấu URL mới này là bản trùng để ngày mai không crawl/gửi lại.
@@ -2700,6 +2726,9 @@ def main(argv=None):
                     error_message = f"AI providers failed: {type(exc).__name__}: {clean_text(str(exc))[:700]}"
                     status = "ai_failed_metadata_only"
                     log.exception("AI provider lỗi; giữ artifact để có thể tiếp tục: %s", canonical_url)
+                    ai_quota_stop = _is_ai_capacity_error(error_message)
+                    if ai_quota_stop:
+                        log.warning("AI provider đã chạm quota/rate limit hoặc lỗi xác thực; dừng lượt hôm nay để tránh gọi lặp.")
 
             # Write a stable per-source artifact before syncing so API failures do not force AI regeneration.
             try:
@@ -2736,6 +2765,9 @@ def main(argv=None):
                 log.error("Không có bản AI hoàn chỉnh; bài chưa được xuất bản: %s", canonical_url)
             processed += 1
             time.sleep(2)
+            if ai_quota_stop:
+                log.warning("Đã lưu bài chưa hoàn chỉnh; URL này sẽ được thử lại ở lần chạy hằng ngày tiếp theo.")
+                break
 
         except Exception as exc:
             failed += 1
@@ -2748,13 +2780,19 @@ def main(argv=None):
         f"Bài mới đã xuất bản: {published_count}/{run_limit}\n"
         f"Bài trùng đã bỏ qua: {duplicates}\n"
         f"Bài lỗi/chưa xuất bản: {failed}\n"
-        "Số bài thực tế có thể thấp hơn 10 nếu nguồn hết bài mới hoặc AI/API gặp lỗi."
+        + ("AI quota/rate limit đã chạm; đã dừng sớm và giữ URL lỗi để thử lại ngày sau." if ai_quota_stop
+           else "Có thể xuất bản ít hơn mục tiêu nếu nguồn mới hoặc AI/API không đáp ứng.")
     )
     log.info(summary)
-    if failed:
-        # Mark the scheduled run as failed so GitHub Actions exposes it and keeps the log.
-        raise SystemExit(1)
+    return {
+        "published_count": published_count,
+        "failed": failed,
+        "ai_quota_stop": ai_quota_stop,
+        "attempted": attempted,
+    }
 
 
 if __name__ == "__main__":
-    main()
+    result = main()
+    if result and result.get("failed") and not result.get("ai_quota_stop"):
+        raise SystemExit(1)
