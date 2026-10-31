@@ -3,7 +3,7 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { defaultDescription, siteName, siteUrl } from "@/lib/seo";
-import { GoogleAnalytics } from "@/components/GoogleAnalytics";
+import { AnalyticsConsent } from "@/components/AnalyticsConsent";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -19,5 +19,5 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#f7f7f2" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="vi"><body><Header />{children}<Footer /><GoogleAnalytics /></body></html>;
+  return <html lang="vi"><body><Header />{children}<Footer /><AnalyticsConsent /></body></html>;
 }
