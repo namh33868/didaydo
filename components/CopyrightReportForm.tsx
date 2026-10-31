@@ -56,7 +56,7 @@ export function CopyrightReportForm() {
         <label>Email liên hệ *
           <input type="email" value={form.claimantEmail} onChange={(e) => update("claimantEmail", e.target.value)} required maxLength={254} autoComplete="email" />
         </label>
-        <label className="copyright-form-full">Bạn gửi báo cáo với tư cách *
+        <label className="copyright-form-full">Bạn gửi thông báo với tư cách *
           <select value={form.relationship} onChange={(e) => update("relationship", e.target.value)}>
             <option value="owner">Chủ sở hữu quyền</option>
             <option value="authorized_agent">Người đại diện được ủy quyền</option>
@@ -85,7 +85,7 @@ export function CopyrightReportForm() {
       </label>
       {(error || message) && <p className={error ? "copyright-form-error" : "copyright-form-success"} role="status">{error || message}</p>}
       <button className="button-primary" type="submit" disabled={busy || !form.declaration}><Send size={15}/>{busy ? "Đang gửi..." : "Gửi thông báo"}</button>
-      <p className="copyright-form-note"><ShieldCheck size={14}/> Mỗi thông báo được xem xét thủ công. Việc gửi báo cáo không tự động khiến nội dung bị gỡ bỏ.</p>
+      <p className="copyright-form-note"><ShieldCheck size={14}/> Mỗi thông báo được xem xét thủ công. Việc gửi thông báo không tự động khiến nội dung bị gỡ bỏ.</p>
     </form>
   );
 }
