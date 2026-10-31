@@ -12,7 +12,7 @@ import logging
 import os
 import re
 import unicodedata
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -442,7 +442,17 @@ def _make_cover(candidate: dict, article: dict, scope: str) -> dict:
     }
 
 
-def find_cover_image(article: dict) -> dict | None:
+def _image_key(url: str) -> str:
+    """Canonicalize image URLs so query-string variants count as the same image."""
+    try:
+        parsed = urlsplit(_plain(url))
+        host = (parsed.hostname or "").lower()
+        path = re.sub(r"/+", "/", parsed.path or "").rstrip("/")
+        return f"{host}{path}".casefold()
+    except ValueError:
+        return _plain(url).casefold()
+
+def find_cover_image(article: dict, exclude_urls: set[str] | None = None) -> dict | None:
     """Return a verified-by-metadata cover, or None; never guess a specific location."""
     article = article or {}
     place_terms = _destination_terms(article)
@@ -450,6 +460,7 @@ def find_cover_image(article: dict) -> dict | None:
     topic = _topic(article)
     topic_terms = topic["terms"]
     country = _plain(article.get("destination_country") or "")
+    excluded = {_image_key(url) for url in (exclude_urls or set()) if url}
 
     place_queries = []
     if place_terms:
@@ -472,7 +483,9 @@ def find_cover_image(article: dict) -> dict | None:
             except (requests.RequestException, ValueError, KeyError) as exc:
                 log.warning("%s location image search failed (%s)", provider_name, type(exc).__name__)
                 continue
-            for candidate in ranked[:8]:
+            for candidate in ranked:
+                if _image_key(candidate.get("url", "")) in excluded:
+                    continue
                 if verify_image_url(candidate.get("url", "")):
                     cover = _make_cover(candidate, article, "exact_destination")
                     log.info("Cover image selected: provider=%s scope=exact_destination place=%s", provider_name, cover.get("place_evidence"))
@@ -498,7 +511,9 @@ def find_cover_image(article: dict) -> dict | None:
             except (requests.RequestException, ValueError, KeyError) as exc:
                 log.warning("%s topic image search failed (%s)", provider_name, type(exc).__name__)
                 continue
-            for candidate in ranked[:8]:
+            for candidate in ranked:
+                if _image_key(candidate.get("url", "")) in excluded:
+                    continue
                 if verify_image_url(candidate.get("url", "")):
                     scope = "country_topic" if require_country and candidate.get("_country_match") else "topic_generic"
                     cover = _make_cover(candidate, article, scope)
