@@ -301,7 +301,7 @@ def build_site_payload(article: dict, draft: dict) -> dict:
     cover = article.get("editorial_cover_image")
     cover_url = clean(cover.get("url")) if isinstance(cover, dict) else ""
     if not cover_url.startswith("https://"):
-        raise RuntimeError("Ảnh đại diện phải là URL HTTPS đã tự lưu trữ trước khi xuất bản.")
+        raise RuntimeError("Ảnh đại diện phải có URL HTTPS hợp lệ trước khi xuất bản.")
 
     title = clean(draft.get("seo_title") or article.get("source_title"))
     content_html = str(draft.get("seo_content") or "").strip()
@@ -885,7 +885,7 @@ def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, f
     try:
         selected_cover = _ensure_source_article_images(article, target_db, draft=draft)
         if not selected_cover:
-            raise RuntimeError("Không tìm được ảnh trong bài nguồn nào sạch logo/watermark; bài được giữ lại, chưa xuất bản.")
+            raise RuntimeError("Bài nguồn không có ảnh hợp lệ và cũng không tìm được ảnh ngoài phù hợp; bài được giữ lại.")
         payload = build_site_payload(article, draft)
     except Exception as exc:
         _record_sync(target_db, source_url, status="failed", error=f"Cover image: {type(exc).__name__}: {clean(exc)[:700]}")
