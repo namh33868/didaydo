@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
 import os
 import re
@@ -113,7 +114,7 @@ def _has_watermark_hint(metadata: dict, source_url: str) -> bool:
     )
     text += " " + _plain(source_url)
     return bool(re.search(
-        r"\b(watermarked|watermark|preview[- ]only|sample[- ]image|proof[- ]only)\b",
+        r"\b(watermarked|watermark|preview[- ]only|sample[- ]image|proof[- ]only|logo|brandmark|brand[- ]logo)\b",
         text,
         flags=re.IGNORECASE,
     ))
@@ -122,6 +123,102 @@ def _has_watermark_hint(metadata: dict, source_url: str) -> bool:
 def _is_public_https_url(url: str) -> bool:
     from image_finder import _public_https_url
     return _public_https_url(url)
+
+
+def _request_logo_review(preview_bytes: bytes) -> dict:
+    """Ask Gemini Vision to reject photos containing a visible logo or watermark."""
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise ImageProcessingError(
+            "Thiếu GEMINI_API_KEY để kiểm tra logo/watermark trong ảnh nguồn."
+        )
+
+    model = (
+        os.getenv("IMAGE_REVIEW_GEMINI_MODEL")
+        or os.getenv("GEMINI_MODEL")
+        or "gemini-3.8-flash"
+    ).strip()
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=[
+                (
+                    "Inspect this travel photo for visible logos or watermarks. "
+                    "Return only JSON with keys has_logo_or_watermark (boolean), "
+                    "confidence (high, medium, or low), and reason (short string). "
+                    "Set true for any visible company/brand logo, publisher logo, "
+                    "photographer watermark, stock-photo watermark, text logo, or "
+                    "semi-transparent mark over the image. Set false only when you "
+                    "are highly confident no such mark is visible. Do not judge "
+                    "copyright or image ownership. If uncertain, use low confidence."
+                ),
+                types.Part.from_bytes(data=preview_bytes, mime_type="image/jpeg"),
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0,
+                max_output_tokens=180,
+            ),
+        )
+        raw = (response.text or "").strip()
+        if not raw:
+            raise ValueError("empty vision response")
+        review = json.loads(raw)
+        if not isinstance(review, dict):
+            raise ValueError("invalid vision response")
+        return {
+            "has_logo_or_watermark": review.get("has_logo_or_watermark"),
+            "confidence": _plain(review.get("confidence")).casefold(),
+            "reason": _plain(review.get("reason"))[:240],
+            "model": model,
+        }
+    except ImageProcessingError:
+        raise
+    except Exception as exc:
+        raise ImageProcessingError(
+            f"Không thể kiểm tra logo/watermark bằng AI ({type(exc).__name__})."
+        ) from None
+
+
+def verify_no_visible_logo(source_bytes: bytes) -> dict:
+    """Fail closed unless image vision confidently reports no visible logo/watermark."""
+    if not source_bytes:
+        raise ImageProcessingError("Không có dữ liệu ảnh để kiểm tra logo.")
+
+    try:
+        with Image.open(io.BytesIO(source_bytes)) as opened:
+            if opened.format not in {"JPEG", "PNG", "WEBP", "BMP", "TIFF"}:
+                raise ImageProcessingError("Định dạng ảnh không được hỗ trợ để kiểm tra logo.")
+            preview = ImageOps.exif_transpose(opened).convert("RGB")
+            preview.thumbnail((768, 768), Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            preview.save(output, format="JPEG", quality=82, optimize=True)
+            preview.close()
+            preview_bytes = output.getvalue()
+    except ImageProcessingError:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ImageProcessingError(
+            f"Không tạo được ảnh xem xét logo ({type(exc).__name__})."
+        ) from None
+
+    review = _request_logo_review(preview_bytes)
+    if review.get("has_logo_or_watermark") is not False:
+        reason = _plain(review.get("reason")) or "Ảnh có dấu hiệu logo/watermark."
+        raise ImageProcessingError(f"Loại ảnh có logo/watermark hoặc kết quả không rõ: {reason}")
+    if review.get("confidence") != "high":
+        reason = _plain(review.get("reason")) or "Không đủ độ tin cậy để xác nhận ảnh sạch logo."
+        raise ImageProcessingError(f"Không xác nhận được ảnh sạch logo: {reason}")
+    return {
+        "status": "no_visible_logo",
+        "confidence": "high",
+        "model": _plain(review.get("model")),
+        "reason": _plain(review.get("reason"))[:240],
+    }
 
 
 def download_image_bytes(url: str, max_bytes: int = SOURCE_MAX_BYTES) -> bytes:
@@ -362,6 +459,7 @@ def process_and_upload_cover_image(
         )
 
     source_bytes = download_image_bytes(source_url)
+    logo_review = verify_no_visible_logo(source_bytes)
     optimized = optimize_image_bytes(
         source_bytes,
         max_width=max_width,
@@ -391,7 +489,8 @@ def process_and_upload_cover_image(
         "compression_quality": optimized["quality"],
         "target_size_met": optimized["target_met"],
         "alt": build_vietnamese_alt_text(candidate, article),
-        "watermark_policy": "not_removed; metadata_hints_checked",
+        "watermark_policy": "not_removed; metadata_and_vision_checked",
+        "logo_review": logo_review,
     })
     log.info(
         "Cover image stored: file=%s size=%.1fKB dimensions=%sx%s target_met=%s",
