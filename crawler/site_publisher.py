@@ -296,6 +296,242 @@ def _cover_credit(image: dict) -> str:
     return " · ".join(parts)[:1200]
 
 
+def build_site_payload(article: dict, draft: dict) -> dict:
+    """Build the exact payload accepted by the website's authenticated ingest route."""
+    cover = article.get("editorial_cover_image")
+    cover_url = clean(cover.get("url")) if isinstance(cover, dict) else ""
+    if not cover_url.startswith("https://"):
+        raise RuntimeError("Ảnh đại diện phải là URL HTTPS đã tự lưu trữ trước khi xuất bản.")
+
+    title = clean(draft.get("seo_title") or article.get("source_title"))
+    content_html = str(draft.get("seo_content") or "").strip()
+    if len(title) < 3 or not content_html:
+        raise RuntimeError("Bài viết chưa có tiêu đề hoặc nội dung HTML hợp lệ.")
+
+    tags = []
+    for value in (
+        draft.get("primary_keyword"),
+        draft.get("secondary_keywords"),
+        article.get("rss_categories"),
+        article.get("topic_categories"),
+        article.get("destination_city"),
+    ):
+        for item in _parse_list(value):
+            candidate = clean(item)[:80]
+            if candidate and candidate.casefold() not in {tag.casefold() for tag in tags}:
+                tags.append(candidate)
+            if len(tags) >= 20:
+                break
+        if len(tags) >= 20:
+            break
+
+    excerpt = clean(
+        draft.get("meta_description")
+        or draft.get("seo_description")
+        or article.get("source_summary")
+    )[:500]
+    seo_description = clean(
+        draft.get("meta_description")
+        or draft.get("seo_description")
+        or excerpt
+    )[:320]
+    return {
+        "title": title[:220],
+        "excerpt": excerpt,
+        "contentHtml": content_html[:500000],
+        "coverImage": cover_url,
+        "coverAlt": clean(cover.get("alt") or title)[:300],
+        "coverCredit": _cover_credit(cover),
+        "country": clean(article.get("destination_country"))[:120],
+        "destination": clean(article.get("destination_city") or article.get("destination"))[:120],
+        "category": _category_for(article),
+        "tags": tags,
+        "status": "published",
+        "featured": False,
+        "authorName": "Ban biên tập",
+        "sourceUrl": normalize_source_url(article.get("source_url", "")),
+        "sourceName": clean(
+            article.get("source_name")
+            or article.get("source_publisher")
+            or article.get("source_domain")
+        )[:200],
+        "seoTitle": title[:220],
+        "seoDescription": seo_description,
+    }
+
+
+def _ensure_source_article_images(
+    article: dict,
+    db_path: str,
+    draft: dict | None = None,
+) -> dict | None:
+    """Download the source article's own photos, reject visible marks, and self-host WebP."""
+    from image_optimizer import (
+        BlobUploadError,
+        ImageProcessingError,
+        process_and_upload_cover_image,
+    )
+
+    source_url = normalize_source_url(article.get("source_url", ""))
+    stored_images = _stored_image_list(article)
+    if not stored_images and source_url:
+        try:
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                row = conn.execute(
+                    "SELECT source_images_json FROM articles WHERE source_url=?",
+                    (source_url,),
+                ).fetchone()
+            if row and row[0]:
+                decoded = json.loads(row[0])
+                if isinstance(decoded, list):
+                    stored_images = [item for item in decoded if isinstance(item, dict)]
+        except (sqlite3.Error, TypeError, json.JSONDecodeError):
+            log.warning("Không đọc được danh sách ảnh gốc đã lưu cho %s", source_url)
+
+    body_images = [
+        item for item in stored_images
+        if item.get("placement_source") == "article_body"
+    ]
+    fallback_images = [
+        item for item in stored_images
+        if item.get("placement_source") in {"og:image_fallback", "rss_image_fallback"}
+    ]
+    candidates = body_images or fallback_images
+    if not candidates:
+        log.warning("Bài nguồn không có ảnh để xử lý: %s", source_url)
+        return None
+
+    try:
+        max_images = max(1, min(int(os.getenv("SOURCE_ARTICLE_MAX_IMAGES", "8")), 12))
+    except ValueError:
+        max_images = 8
+
+    source_name = clean(
+        article.get("source_name")
+        or article.get("source_publisher")
+        or article.get("source_domain")
+        or (urlparse(source_url).hostname if source_url else "")
+        or "Bài viết nguồn"
+    )
+    search_article = dict(article)
+    if isinstance(draft, dict):
+        search_article["visual_search_title"] = clean(
+            draft.get("seo_title") or article.get("source_title")
+        )
+
+    hosted_by_original: dict[str, dict] = {}
+    processed_images: list[dict] = []
+    source_urls: set[str] = set()
+    selected_cover = None
+
+    ordered = sorted(
+        candidates,
+        key=lambda item: (
+            int(item.get("position_index") or 9999),
+            clean(item.get("image_id")),
+        ),
+    )
+    for image in ordered[:max_images]:
+        candidate = dict(image)
+        original_url = clean(candidate.get("original_url") or candidate.get("url"))
+        if not original_url.startswith("https://"):
+            continue
+        source_urls.add(original_url)
+
+        candidate["original_url"] = original_url
+        candidate["source_name"] = clean(candidate.get("source_name") or source_name)
+        candidate["provider"] = clean(candidate.get("provider") or source_name)
+        candidate["source_page_url"] = clean(candidate.get("source_page_url") or source_url)
+        candidate["title"] = clean(
+            candidate.get("title")
+            or candidate.get("caption")
+            or candidate.get("alt")
+            or article.get("source_title")
+        )
+
+        try:
+            if (
+                candidate.get("asset_storage") == "vercel_blob"
+                and candidate.get("processed_format") == "webp"
+                and clean(candidate.get("url")).startswith("https://")
+                and isinstance(candidate.get("logo_review"), dict)
+                and candidate["logo_review"].get("status") == "no_visible_logo"
+                and candidate["logo_review"].get("confidence") == "high"
+            ):
+                hosted = candidate
+            else:
+                hosted = process_and_upload_cover_image(candidate, search_article)
+        except ImageProcessingError as exc:
+            log.warning(
+                "Bỏ ảnh nguồn %s do không đạt kiểm tra logo/chất lượng (%s).",
+                candidate.get("image_id") or original_url,
+                type(exc).__name__,
+            )
+            continue
+        except BlobUploadError:
+            raise
+
+        hosted["original_url"] = original_url
+        hosted["image_id"] = clean(candidate.get("image_id")) or f"IMG_{len(processed_images) + 1:02d}"
+        hosted["placement_source"] = candidate.get("placement_source") or "article_body"
+        hosted["rights_status"] = "operator_authorized_all_configured_sources"
+        hosted["source_page_url"] = clean(candidate.get("source_page_url") or source_url)
+        hosted["is_cover"] = False
+        hosted_by_original[original_url] = hosted
+        processed_images.append(hosted)
+
+        if selected_cover is None:
+            selected_cover = hosted
+
+    if selected_cover is None:
+        log.warning(
+            "Không có ảnh bài nguồn nào được xác nhận sạch logo/watermark: %s",
+            source_url,
+        )
+        return None
+
+    selected_cover["is_cover"] = True
+    selected_cover["cover_role"] = "article_source_cover"
+    article["editorial_cover_image"] = selected_cover
+    article["source_image_url"] = selected_cover["url"]
+    article["image_credit"] = clean(selected_cover.get("credit") or source_name)
+
+    if isinstance(draft, dict):
+        html_content = str(draft.get("seo_content") or "")
+        soup = BeautifulSoup(html_content, "html.parser")
+        for image_tag in list(soup.find_all("img")):
+            original = clean(image_tag.get("src"))
+            hosted = hosted_by_original.get(original)
+            if hosted:
+                image_tag["src"] = hosted["url"]
+                image_tag["alt"] = clean(hosted.get("alt") or image_tag.get("alt") or article.get("source_title"))[:300]
+                image_tag["loading"] = "lazy"
+                image_tag["decoding"] = "async"
+                image_tag.attrs.pop("srcset", None)
+                image_tag.attrs.pop("sizes", None)
+            elif original in source_urls:
+                image_tag.decompose()
+                parent = image_tag.parent
+                if parent and parent.name == "figure" and not parent.find("img"):
+                    parent.decompose()
+        draft["seo_content"] = "".join(str(child) for child in soup.contents)
+
+    serialized = json.dumps(processed_images, ensure_ascii=False)
+    article["source_images"] = processed_images
+    article["source_images_json"] = serialized
+    if source_url:
+        try:
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                conn.execute(
+                    "UPDATE articles SET source_images_json=?, updated_at=? WHERE source_url=?",
+                    (serialized, now_iso(), source_url),
+                )
+                conn.commit()
+        except sqlite3.Error as exc:
+            log.warning("Không lưu được metadata ảnh WebP vào SQLite (%s)", type(exc).__name__)
+    return selected_cover
+
+
 def _ensure_editorial_cover_image(article: dict, db_path: str, draft: dict | None = None) -> dict | None:
     """Find, rights-check, download, optimize, and self-host a licensed WebP cover."""
     from image_finder import find_cover_image, is_license_allowed, verify_image_url
@@ -757,10 +993,9 @@ def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, f
         # switch is enabled and the authenticated client requests publication.
 
     try:
-        if not SOURCE_IMAGE_REUSE_AUTHORIZED:
-            selected_cover = _ensure_editorial_cover_image(article, target_db, draft=draft)
-            if not selected_cover:
-                raise RuntimeError("Không tìm được ảnh đại diện phù hợp có giấy phép sử dụng; bài được giữ lại, chưa xuất bản.")
+        selected_cover = _ensure_source_article_images(article, target_db, draft=draft)
+        if not selected_cover:
+            raise RuntimeError("Không tìm được ảnh trong bài nguồn nào sạch logo/watermark; bài được giữ lại, chưa xuất bản.")
         payload = build_site_payload(article, draft)
     except Exception as exc:
         _record_sync(target_db, source_url, status="failed", error=f"Cover image: {type(exc).__name__}: {clean(exc)[:700]}")
