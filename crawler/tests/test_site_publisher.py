@@ -192,6 +192,60 @@ class SitePublisherSyncStateTests(unittest.TestCase):
         search.assert_called_once()
         self.assertIsNone(result)
 
+    def test_historical_backfill_uses_source_image_before_external_search(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "crawler.sqlite")
+            source_url = "https://travel.example.com/old-story"
+            source_image = "https://travel.example.com/images/old-story.jpg"
+            article_extractor = lambda item: {
+                "source_url": item["source_url"],
+                "source_title": item["rss_title"],
+                "source_name": "Travel Example",
+                "source_images": [{
+                    "image_id": "IMG_01",
+                    "url": source_image,
+                    "alt": "Ảnh bãi biển",
+                    "caption": "Bãi biển",
+                    "position_index": 1,
+                    "placement_source": "article_body",
+                    "source_page_url": source_url,
+                }],
+            }
+
+            with (
+                patch.object(site_publisher, "SITE_SYNC_ENABLED", True),
+                patch.object(site_publisher, "SITE_URL", "https://didaydo.example"),
+                patch.object(site_publisher, "SITE_INGEST_API_KEY", "x" * 32),
+                patch.object(site_publisher, "_check_api_ready"),
+                patch(
+                    "site_publisher.requests.get",
+                    return_value=FakeResponse({"posts": [{
+                        "source_url": source_url,
+                        "title": "Bài cũ",
+                        "excerpt": "Tóm tắt bài cũ",
+                        "source_name": "Travel Example",
+                        "category_name": "Điểm đến",
+                        "country_name": "Việt Nam",
+                        "destination_name": "Đà Nẵng",
+                    }]}),
+                ),
+                patch("site_publisher.requests.post", return_value=FakeResponse({"success": True, "failed": 0})) as post,
+                patch("image_finder.find_cover_image") as external_search,
+                patch("image_optimizer.process_and_upload_cover_image") as process_image,
+            ):
+                result = site_publisher.backfill_missing_cover_images(
+                    db_path,
+                    limit=1,
+                    article_extractor=article_extractor,
+                )
+
+            self.assertEqual(result["updated"], 1)
+            external_search.assert_not_called()
+            process_image.assert_not_called()
+            payload = post.call_args.kwargs["json"]
+            self.assertEqual(payload["coverImage"], source_image)
+            self.assertEqual(payload["sourceUrl"], source_url)
+
     def test_site_payload_requires_self_hosted_cover(self):
         with self.assertRaisesRegex(RuntimeError, "URL HTTPS"):
             site_publisher.build_site_payload(
