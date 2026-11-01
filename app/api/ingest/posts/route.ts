@@ -203,12 +203,82 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
   return { kind: "created" as const, ...rows[0] };
 }
 
+function stripPublicImageAttribution(html: string): string {
+  return html.replace(/<figcaption\\b[^>]*>[\\s\\S]*?<\\/figcaption>/gi, (caption) => {
+    const visibleText = caption
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;|&#160;|&#xA0;/gi, " ")
+      .replace(/\\s+/g, " ")
+      .toLocaleLowerCase("vi");
+    const privateMarkers = [
+      "nguồn ảnh",
+      "giấy phép",
+      "ảnh:",
+      "photo by",
+      "photo credit",
+      "image credit",
+      "credit:",
+      "courtesy of",
+      "tác giả ảnh",
+    ];
+    const hasPrivateImageUrl = /https?:\\/\\//i.test(caption);
+    return hasPrivateImageUrl || privateMarkers.some((marker) => visibleText.includes(marker))
+      ? ""
+      : caption;
+  });
+}
+
 export async function GET(request: Request) {
   if (!authorize(request)) {
     return NextResponse.json({ error: "Không có quyền truy cập." }, { status: 401 });
   }
 
   const url = new URL(request.url);
+  if (url.searchParams.get("cleanupImageAttribution") === "1") {
+    const rawLimit = Number(url.searchParams.get("limit") || "100");
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(Math.trunc(rawLimit), 250)) : 100;
+    const after = url.searchParams.get("after") || "";
+    if (after && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(after)) {
+      return NextResponse.json({ error: "Cursor không hợp lệ." }, { status: 400 });
+    }
+
+    const posts = after
+      ? await db<{ id: string; content_html: string }[]>\`
+          SELECT id, content_html FROM posts
+          WHERE id > ${after}::uuid AND content_html ILIKE '%<figcaption%'
+          ORDER BY id ASC LIMIT ${limit}
+        \`
+      : await db<{ id: string; content_html: string }[]>\`
+          SELECT id, content_html FROM posts
+          WHERE content_html ILIKE '%<figcaption%'
+          ORDER BY id ASC LIMIT ${limit}
+        \`;
+
+    let updated = 0;
+    let captionsRemoved = 0;
+    for (const post of posts) {
+      const original = post.content_html || "";
+      const cleaned = stripPublicImageAttribution(original);
+      if (cleaned === original) continue;
+      const beforeCount = (original.match(/<figcaption\\b/gi) || []).length;
+      const afterCount = (cleaned.match(/<figcaption\\b/gi) || []).length;
+      captionsRemoved += Math.max(0, beforeCount - afterCount);
+      await db\`
+        UPDATE posts SET content_html = ${cleaned}, updated_at = NOW()
+        WHERE id = ${post.id}::uuid
+      \`;
+      updated += 1;
+    }
+
+    return NextResponse.json({
+      success: true,
+      scanned: posts.length,
+      updated,
+      captionsRemoved,
+      nextCursor: posts.length === limit ? posts[posts.length - 1].id : null,
+    });
+  }
+
   if (url.searchParams.get("health") === "1") {
     return NextResponse.json({
       ok: true,
