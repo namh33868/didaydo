@@ -138,6 +138,9 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertEqual(payload["status"], "published")
             self.assertEqual(payload["sourceUrl"], "https://travel.example.com/ha-long-bay")
             self.assertIn("Vịnh Hạ Long", payload["coverAlt"])
+            self.assertNotIn("coverCredit", payload)
+            self.assertNotIn("Nguồn ảnh", draft["seo_content"])
+            self.assertNotIn("Ảnh: Travel Example", draft["seo_content"])
 
     def test_external_image_search_runs_only_when_source_has_no_image(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -245,6 +248,7 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             payload = post.call_args.kwargs["json"]
             self.assertEqual(payload["coverImage"], source_image)
             self.assertEqual(payload["sourceUrl"], source_url)
+            self.assertNotIn("coverCredit", payload)
 
     def test_site_payload_requires_self_hosted_cover(self):
         with self.assertRaisesRegex(RuntimeError, "URL HTTPS"):
