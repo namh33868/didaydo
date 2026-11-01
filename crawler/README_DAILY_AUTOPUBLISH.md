@@ -1,6 +1,6 @@
 # Chạy crawler mỗi ngày và tự xuất bản lên website
 
-Workflow `.github/workflows/daily-crawler.yml` nằm ở thư mục gốc repository. Nó chạy mỗi ngày lúc 08:00 giờ Việt Nam (01:00 UTC), và có thể chạy tay trong tab **Actions**.
+Workflow `.github/workflows/daily-crawler.yml` nằm ở thư mục gốc repository. Nó chạy mỗi ngày lúc 10:15 giờ Việt Nam, và có thể chạy tay trong tab **Actions**.
 
 ## 1. Cấu hình Vercel
 
@@ -46,5 +46,6 @@ Workflow đặt mục tiêu xuất bản tối đa 10 bài mới mỗi lần ch�
 
 - Bài mới sẽ được gửi với trạng thái `published` và chỉ được coi là thành công khi API website trả về `published`.
 - Bản nháp cũ trên website không tự động bị xuất bản hàng loạt; workflow chủ yếu xử lý bài mới.
-- Ảnh nguồn bị tắt mặc định (`SOURCE_IMAGE_REUSE_AUTHORIZED=false`). Chỉ bật tái sử dụng khi đã xác nhận quyền sử dụng; khi chưa được phép, placeholder rà soát quyền ảnh sẽ bị bỏ khỏi HTML công khai.
+- Crawler dùng ảnh trong bài nguồn theo cấu hình quyền đã được người vận hành xác nhận (`SOURCE_IMAGE_REUSE_AUTHORIZED=true`). Ảnh được tải xuống, kiểm tra logo/watermark, crop ở mép hoặc inpainting dấu nhỏ nếu an toàn, kiểm tra lại, rồi chuyển WebP và tự lưu trên Vercel Blob.
+- Logo/watermark lớn hoặc khó xử lý sẽ khiến ảnh bị loại; crawler không đăng ảnh vẫn còn dấu rõ ràng hoặc bị xử lý hỏng.
 - Tự động xuất bản không có bước duyệt biên tập thủ công, nên vẫn cần theo dõi nội dung, dữ kiện, bản quyền và log.
