@@ -11,6 +11,8 @@ from image_optimizer import (
     optimize_image_bytes,
     slugify_filename,
     upload_webp_to_vercel_blob,
+    verify_no_visible_logo,
+    _has_watermark_hint,
 )
 
 
@@ -83,6 +85,49 @@ class ImageOptimizerTests(unittest.TestCase):
     def test_invalid_bytes_are_rejected(self):
         with self.assertRaises(ImageProcessingError):
             optimize_image_bytes(b"not-an-image")
+
+
+    def test_metadata_logo_hint_is_rejected(self):
+        self.assertTrue(_has_watermark_hint(
+            {"alt": "Travel photo with logo in bottom corner"},
+            "https://example.com/photos/travel.jpg",
+        ))
+
+    def test_visual_logo_review_accepts_only_high_confidence_clean_images(self):
+        source = io.BytesIO()
+        Image.new("RGB", (900, 600), (40, 120, 180)).save(source, format="JPEG")
+
+        with patch("image_optimizer._request_logo_review", return_value={
+            "has_logo_or_watermark": False,
+            "confidence": "high",
+            "reason": "No visible brand marks.",
+            "model": "gemini-3.8-flash",
+        }):
+            result = verify_no_visible_logo(source.getvalue())
+        self.assertEqual(result["status"], "no_visible_logo")
+        self.assertEqual(result["confidence"], "high")
+
+    def test_visual_logo_review_rejects_logo_and_uncertain_result(self):
+        source = io.BytesIO()
+        Image.new("RGB", (900, 600), (40, 120, 180)).save(source, format="JPEG")
+
+        with patch("image_optimizer._request_logo_review", return_value={
+            "has_logo_or_watermark": True,
+            "confidence": "high",
+            "reason": "Publisher logo visible in the corner.",
+            "model": "gemini-3.8-flash",
+        }):
+            with self.assertRaisesRegex(ImageProcessingError, "logo/watermark"):
+                verify_no_visible_logo(source.getvalue())
+
+        with patch("image_optimizer._request_logo_review", return_value={
+            "has_logo_or_watermark": False,
+            "confidence": "medium",
+            "reason": "The corner is unclear.",
+            "model": "gemini-3.8-flash",
+        }):
+            with self.assertRaisesRegex(ImageProcessingError, "Không xác nhận được"):
+                verify_no_visible_logo(source.getvalue())
 
 
 if __name__ == "__main__":
