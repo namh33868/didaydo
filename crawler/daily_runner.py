@@ -99,6 +99,8 @@ def main():
         image_backfill,
     )
 
+    # Keep report fields defined even when historical image checks are disabled.
+    cover_recheck = {"checked": 0, "updated": 0, "unmatched": 0, "failed": 0}
     cover_recheck_limit = _env_int("IMAGE_RECHECK_PER_RUN", 0, minimum=0, maximum=10)
     if cover_recheck_limit:
         cover_recheck = site_publisher.recheck_published_cover_images(
