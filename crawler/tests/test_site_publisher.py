@@ -137,7 +137,7 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertEqual(payload["coverImage"], normalized_url)
             self.assertEqual(payload["status"], "published")
             self.assertEqual(payload["sourceUrl"], "https://travel.example.com/ha-long-bay")
-            self.assertIn("vịnh Hạ Long", payload["coverAlt"])
+            self.assertIn("Vịnh Hạ Long", payload["coverAlt"])
 
     def test_external_image_search_runs_only_when_source_has_no_image(self):
         with tempfile.TemporaryDirectory() as temp_dir:
