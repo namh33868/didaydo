@@ -95,14 +95,17 @@ def main():
         image_backfill,
     )
 
-    cover_recheck_limit = _env_int("IMAGE_RECHECK_PER_RUN", 2, minimum=1, maximum=10)
-    cover_recheck = site_publisher.recheck_published_cover_images(
-        db_path, limit=cover_recheck_limit, article_extractor=bot.extract_article_metadata
-    )
-    log.info(
-        "Rà ảnh bài đã xuất bản: kiểm tra %(checked)s, thay ảnh %(updated)s, chưa tìm được ảnh khớp %(unmatched)s, lỗi %(failed)s.",
-        cover_recheck,
-    )
+    cover_recheck_limit = _env_int("IMAGE_RECHECK_PER_RUN", 0, minimum=0, maximum=10)
+    if cover_recheck_limit:
+        cover_recheck = site_publisher.recheck_published_cover_images(
+            db_path, limit=cover_recheck_limit, article_extractor=bot.extract_article_metadata
+        )
+        log.info(
+            "Rà ảnh bài đã xuất bản: kiểm tra %(checked)s, thay ảnh %(updated)s, chưa tìm được ảnh khớp %(unmatched)s, lỗi %(failed)s.",
+            cover_recheck,
+        )
+    else:
+        log.info("Bỏ qua rà soát ảnh bài cũ trong lượt chạy thường ngày.")
 
     recovered_published = 0
     published_articles = []
