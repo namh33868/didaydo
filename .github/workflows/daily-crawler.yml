@@ -145,11 +145,11 @@ jobs:
 
           assert _contains_phrase("Ha Long Bay, Vietnam", "Hạ Long"), "Accent-insensitive place matching failed"
           assert not _contains_phrase("Ninh Van Bay, Vietnam", "Hạ Long"), "Different bay must not match Ha Long"
-          assert is_license_allowed("CC BY-SA 4.0"), "CC BY-SA should be allowed"
+          assert not is_license_allowed("CC BY-SA 4.0"), "ShareAlike license must be rejected until compatible derivative terms are supported"
           assert is_license_allowed("Public Domain"), "Public domain should be allowed"
           assert not is_license_allowed("CC BY-NC 4.0"), "Non-commercial license must be rejected"
           assert not is_license_allowed("CC BY-ND 4.0"), "No-derivatives license must be rejected"
-          assert _license_allowed_code("by-sa"), "Openverse CC BY-SA should be allowed"
+          assert not _license_allowed_code("by-sa"), "Openverse ShareAlike license must be rejected"
           assert not _license_allowed_code("by-nc"), "Openverse NC license must be rejected"
           exact_match = _rank_candidates(
               [{"title": "Ha Long Bay, Vietnam", "description": "Coastal landscape", "tags_text": "bay", "width": 1600}],
