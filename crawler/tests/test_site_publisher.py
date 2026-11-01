@@ -73,11 +73,11 @@ class SitePublisherSyncStateTests(unittest.TestCase):
                     "site_publisher.requests.get",
                     return_value=FakeResponse({"found": False}),
                 ),
-                patch.object(site_publisher, "_ensure_editorial_cover_image", return_value=None),
+                patch.object(site_publisher, "_ensure_source_article_images", return_value=None),
             ):
                 with self.assertRaisesRegex(
                     RuntimeError,
-                    "Không tìm được ảnh đại diện phù hợp",
+                    "Không tìm được ảnh trong bài nguồn",
                 ):
                     site_publisher.sync_draft_to_site(article, draft, db_path)
 
@@ -85,6 +85,80 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertIsNotNone(record)
             self.assertEqual(record["site_status"], "failed")
             self.assertIn("Cover image: RuntimeError", record["sync_error"])
+
+
+    def test_source_article_photo_is_webp_hosted_and_rewritten_in_article_html(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "crawler.sqlite")
+            original_url = "https://travel.example.com/media/ha-long-bay.jpg"
+            hosted_url = "https://public.example.blob.vercel-storage.com/images/covers/ha-long-bay-0123456789ab.webp"
+            article = {
+                "source_url": "https://travel.example.com/ha-long-bay",
+                "source_title": "Khám phá vịnh Hạ Long",
+                "source_name": "Travel Example",
+                "source_images": [{
+                    "image_id": "IMG_01",
+                    "url": original_url,
+                    "alt": "Vịnh Hạ Long nhìn từ trên cao",
+                    "caption": "Toàn cảnh vịnh Hạ Long",
+                    "position_index": 1,
+                    "placement_source": "article_body",
+                }],
+                "destination_country": "Việt Nam",
+                "destination_city": "Hạ Long",
+                "primary_category": "travel-guide",
+            }
+            draft = {
+                "seo_title": "Khám phá vịnh Hạ Long",
+                "meta_description": "Cẩm nang khám phá vịnh Hạ Long.",
+                "secondary_keywords": ["du lịch Hạ Long", "vịnh Hạ Long"],
+                "seo_content": (
+                    '<p>Giới thiệu điểm đến.</p>'
+                    f'<figure><img src="{original_url}" alt="Vịnh Hạ Long" /></figure>'
+                ),
+            }
+            processed = {
+                **article["source_images"][0],
+                "original_url": original_url,
+                "url": hosted_url,
+                "asset_storage": "vercel_blob",
+                "processed_format": "webp",
+                "width": 1200,
+                "height": 800,
+                "file_size_bytes": 48000,
+                "alt": "Ảnh minh họa vịnh Hạ Long tại Hạ Long, Việt Nam",
+                "logo_review": {
+                    "status": "no_visible_logo",
+                    "confidence": "high",
+                    "model": "gemini-3.8-flash",
+                },
+            }
+
+            with patch(
+                "image_optimizer.process_and_upload_cover_image",
+                return_value=processed,
+            ) as process_image:
+                cover = site_publisher._ensure_source_article_images(article, db_path, draft)
+
+            process_image.assert_called_once()
+            self.assertEqual(cover["url"], hosted_url)
+            self.assertTrue(cover["is_cover"])
+            self.assertEqual(article["source_image_url"], hosted_url)
+            self.assertIn(hosted_url, draft["seo_content"])
+            self.assertNotIn(original_url, draft["seo_content"])
+
+            payload = site_publisher.build_site_payload(article, draft)
+            self.assertEqual(payload["coverImage"], hosted_url)
+            self.assertEqual(payload["status"], "published")
+            self.assertEqual(payload["sourceUrl"], "https://travel.example.com/ha-long-bay")
+            self.assertIn("vịnh Hạ Long", payload["coverAlt"])
+
+    def test_site_payload_requires_self_hosted_cover(self):
+        with self.assertRaisesRegex(RuntimeError, "URL HTTPS"):
+            site_publisher.build_site_payload(
+                {"source_title": "Bài viết", "editorial_cover_image": {"url": "http://source.example/image.jpg"}},
+                {"seo_title": "Bài viết", "seo_content": "<p>Nội dung.</p>"},
+            )
 
 
 if __name__ == "__main__":
