@@ -1,0 +1,40 @@
+name: Clean legacy public image attribution
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: crawler
+    env:
+      SITE_URL: ${{ secrets.SITE_URL }}
+      SITE_INGEST_API_KEY: ${{ secrets.SITE_INGEST_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install HTTP client
+        run: python -m pip install "requests>=2.32,<3"
+
+      - name: Validate production credentials
+        shell: bash
+        run: |
+          if [ -z "$SITE_URL" ] || [ -z "$SITE_INGEST_API_KEY" ]; then
+            echo "Missing SITE_URL or SITE_INGEST_API_KEY GitHub Actions secret."
+            exit 1
+          fi
+
+      - name: Remove image attribution captions from existing posts
+        run: python cleanup_public_image_attribution.py
