@@ -77,7 +77,7 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(
                     RuntimeError,
-                    "Không tìm được ảnh trong bài nguồn",
+                    "Bài nguồn không có ảnh hợp lệ",
                 ):
                     site_publisher.sync_draft_to_site(article, draft, db_path)
 
@@ -87,11 +87,11 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertIn("Cover image: RuntimeError", record["sync_error"])
 
 
-    def test_source_article_photo_is_webp_hosted_and_rewritten_in_article_html(self):
+    def test_source_article_photo_uses_original_url_without_processing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = str(Path(temp_dir) / "crawler.sqlite")
-            original_url = "https://travel.example.com/media/ha-long-bay.jpg"
-            hosted_url = "https://public.example.blob.vercel-storage.com/images/covers/ha-long-bay-0123456789ab.webp"
+            original_url = "http://travel.example.com/media/ha-long-bay.jpg"
+            normalized_url = "https://travel.example.com/media/ha-long-bay.jpg"
             article = {
                 "source_url": "https://travel.example.com/ha-long-bay",
                 "source_title": "Khám phá vịnh Hạ Long",
@@ -117,42 +117,80 @@ class SitePublisherSyncStateTests(unittest.TestCase):
                     f'<figure><img src="{original_url}" alt="Vịnh Hạ Long" /></figure>'
                 ),
             }
-            processed = {
-                **article["source_images"][0],
-                "original_url": original_url,
-                "url": hosted_url,
-                "asset_storage": "vercel_blob",
-                "processed_format": "webp",
-                "width": 1200,
-                "height": 800,
-                "file_size_bytes": 48000,
-                "alt": "Ảnh minh họa vịnh Hạ Long tại Hạ Long, Việt Nam",
-                "logo_review": {
-                    "status": "no_visible_logo",
-                    "confidence": "high",
-                    "model": "gemini-3.8-flash",
-                },
-            }
 
-            with patch(
-                "image_optimizer.process_and_upload_cover_image",
-                return_value=processed,
-            ) as process_image:
+            with (
+                patch("image_optimizer.process_and_upload_cover_image") as process_image,
+                patch("image_finder.find_cover_image") as external_search,
+            ):
                 cover = site_publisher._ensure_source_article_images(article, db_path, draft)
 
-            process_image.assert_called_once()
-            self.assertEqual(cover["url"], hosted_url)
+            process_image.assert_not_called()
+            external_search.assert_not_called()
+            self.assertEqual(cover["url"], normalized_url)
             self.assertTrue(cover["is_cover"])
-            self.assertEqual(article["source_image_url"], hosted_url)
-            self.assertIn(hosted_url, draft["seo_content"])
+            self.assertEqual(article["source_image_url"], normalized_url)
+            self.assertIn(normalized_url, draft["seo_content"])
             self.assertNotIn(original_url, draft["seo_content"])
+            self.assertIn("loading=\\"lazy\\"", draft["seo_content"])
 
             payload = site_publisher.build_site_payload(article, draft)
-            self.assertEqual(payload["coverImage"], hosted_url)
-            self.assertNotIn(original_url, payload["contentHtml"])
+            self.assertEqual(payload["coverImage"], normalized_url)
             self.assertEqual(payload["status"], "published")
             self.assertEqual(payload["sourceUrl"], "https://travel.example.com/ha-long-bay")
             self.assertIn("vịnh Hạ Long", payload["coverAlt"])
+
+    def test_external_image_search_runs_only_when_source_has_no_image(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "crawler.sqlite")
+            article = {
+                "source_url": "https://travel.example.com/no-image",
+                "source_title": "Khám phá một điểm đến",
+                "source_name": "Travel Example",
+                "source_images": [],
+                "destination_country": "Việt Nam",
+                "destination_city": "Đà Nẵng",
+                "primary_category": "travel-guide",
+            }
+            draft = {
+                "seo_title": "Khám phá một điểm đến",
+                "seo_content": "<p>Nội dung biên tập.</p>",
+            }
+            external = {
+                "url": "https://images.example.net/da-nang-coast.jpg",
+                "title": "Da Nang coastline",
+                "creator": "Photo creator",
+                "provider": "Openverse",
+                "source_page_url": "https://openverse.example.net/photo/123",
+                "license": "CC BY 4.0",
+                "license_url": "https://creativecommons.org/licenses/by/4.0/",
+                "image_scope": "exact_destination",
+                "relevance_verified": True,
+            }
+
+            with (
+                patch("image_finder.find_cover_image", return_value=external) as external_search,
+                patch("image_optimizer.process_and_upload_cover_image") as process_image,
+            ):
+                cover = site_publisher._ensure_source_article_images(article, db_path, draft)
+
+            external_search.assert_called_once()
+            process_image.assert_not_called()
+            self.assertEqual(cover["url"], external["url"])
+            self.assertEqual(cover["asset_storage"], "external_source")
+            self.assertEqual(cover["license"], "CC BY 4.0")
+            self.assertEqual(cover["source_page_url"], external["source_page_url"])
+            self.assertEqual(cover["cover_role"], "external_fallback_cover")
+
+    def test_no_source_photo_or_external_match_returns_none(self):
+        article = {
+            "source_url": "https://travel.example.com/no-photo",
+            "source_title": "Bài viết không có ảnh",
+            "source_images": [],
+        }
+        with patch("image_finder.find_cover_image", return_value=None) as search:
+            result = site_publisher._ensure_source_article_images(article, ":memory:")
+        search.assert_called_once()
+        self.assertIsNone(result)
 
     def test_site_payload_requires_self_hosted_cover(self):
         with self.assertRaisesRegex(RuntimeError, "URL HTTPS"):
