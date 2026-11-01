@@ -91,6 +91,53 @@ def ensure_table(db_path: str | None = None) -> None:
         conn.commit()
 
 
+def _record_sync(
+    db_path: str,
+    source_url: str,
+    *,
+    post_id: str | int | None = None,
+    slug: str | None = None,
+    status: str = "pending",
+    site_url: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Persist the latest website sync outcome without discarding known remote IDs."""
+    target = db_path or DATABASE_PATH
+    canonical_url = normalize_source_url(source_url)
+    if not canonical_url:
+        raise ValueError("Không thể ghi trạng thái đồng bộ khi thiếu source_url.")
+
+    ensure_table(target)
+    values = (
+        canonical_url,
+        clean(post_id) or None,
+        clean(slug) or None,
+        clean(status).lower() or "pending",
+        clean(site_url) or None,
+        now_iso(),
+        clean(error) or None,
+    )
+    with sqlite3.connect(target, timeout=30) as conn:
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute(
+            """
+            INSERT INTO website_sync (
+                source_url, site_post_id, site_slug, site_status,
+                site_url, last_synced_at, sync_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_url) DO UPDATE SET
+                site_post_id = COALESCE(excluded.site_post_id, website_sync.site_post_id),
+                site_slug = COALESCE(excluded.site_slug, website_sync.site_slug),
+                site_status = excluded.site_status,
+                site_url = COALESCE(excluded.site_url, website_sync.site_url),
+                last_synced_at = excluded.last_synced_at,
+                sync_error = excluded.sync_error
+            """,
+            values,
+        )
+        conn.commit()
+
+
 def _endpoint(path: str = "") -> str:
     return f"{SITE_URL}/api/ingest/posts{path}"
 
