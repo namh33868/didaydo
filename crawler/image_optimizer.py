@@ -110,7 +110,7 @@ def _has_watermark_hint(metadata: dict, source_url: str) -> bool:
     """Reject explicit preview/watermark hints; this does not inspect pixels or erase marks."""
     text = " ".join(
         _plain(metadata.get(key))
-        for key in ("title", "description", "caption", "tags_text", "provider")
+        for key in ("title", "description", "caption", "alt", "tags_text", "provider", "creator")
     )
     text += " " + _plain(source_url)
     return bool(re.search(
