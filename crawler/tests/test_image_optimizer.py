@@ -44,6 +44,11 @@ class ImageOptimizerTests(unittest.TestCase):
             self.assertEqual(output.format, "WEBP")
             self.assertEqual(output.width, result["width"])
 
+    def test_watermark_preview_metadata_is_flagged(self):
+        from image_optimizer import _has_watermark_hint
+        self.assertTrue(_has_watermark_hint({"title": "Watermarked preview"}, "https://example.com/a.jpg"))
+        self.assertFalse(_has_watermark_hint({"title": "Ha Long Bay landscape"}, "https://example.com/a.jpg"))
+
     def test_invalid_bytes_are_rejected(self):
         with self.assertRaises(ImageProcessingError):
             optimize_image_bytes(b"not-an-image")

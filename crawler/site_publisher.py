@@ -410,11 +410,12 @@ def _ensure_editorial_cover_image(article: dict, db_path: str, draft: dict | Non
     return selected
 
 def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) -> dict:
-    """Add licensed cover images to older published crawler posts that lack one."""
+    """Add licensed, optimized, self-hosted WebP covers to older published posts."""
     if not SITE_SYNC_ENABLED or not SITE_URL or not SITE_INGEST_API_KEY:
         return {"checked": 0, "updated": 0, "unmatched": 0, "failed": 0, "skipped": True}
 
     from image_finder import find_cover_image
+    from image_optimizer import process_and_upload_cover_image
 
     _check_api_ready()
     maximum = max(1, min(int(limit), 25))
@@ -460,17 +461,24 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
         article = {
             "source_url": source_url,
             "source_title": title,
+            "visual_search_title": clean(post.get("seo_title") or title),
+            "seo_title": clean(post.get("seo_title") or title),
             "source_summary": clean(post.get("excerpt")),
+            "visual_search_summary": clean(post.get("seo_description") or post.get("excerpt")),
             "destination_country": clean(post.get("country_name")),
             "destination_city": clean(post.get("destination_name")),
             "primary_category": category_map.get(clean(post.get("category_name")).casefold(), "travel-guide"),
         }
         try:
-            cover = find_cover_image(article)
-            if not cover:
+            candidate = find_cover_image(article)
+            if not candidate:
                 result["unmatched"] += 1
                 result["items"].append({"title": title[:160], "status": "no_licensed_match"})
                 continue
+
+            # Old published posts must follow the same download → WebP → Blob path
+            # as new posts. Never backfill a remote source URL directly.
+            cover = process_and_upload_cover_image(candidate, article)
 
             payload = {
                 "title": title,
@@ -489,8 +497,12 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
                 "seoDescription": clean(post.get("seo_description") or post.get("excerpt")),
                 "status": "published",
             }
-            if not payload["coverImage"].startswith("https://"):
-                raise ValueError("Ảnh đại diện không phải URL HTTPS.")
+            if (
+                not payload["coverImage"].startswith("https://")
+                or cover.get("asset_storage") != "vercel_blob"
+                or cover.get("processed_format") != "webp"
+            ):
+                raise ValueError("Ảnh bù phải là WebP đã lưu trong Vercel Blob.")
 
             update_response = requests.post(
                 _endpoint(), headers=_headers(), json=payload,
@@ -506,10 +518,14 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
                 "status": "updated",
                 "image_scope": cover.get("image_scope"),
                 "provider": cover.get("provider") or cover.get("source_name"),
+                "filename": cover.get("optimized_filename"),
+                "size_bytes": cover.get("file_size_bytes"),
             })
             log.info(
-                "Đã bổ sung ảnh đại diện cho bài cũ: title=%s scope=%s",
-                title[:120], cover.get("image_scope"),
+                "Đã bổ sung ảnh WebP cho bài cũ: title=%s scope=%s size=%sKB",
+                title[:120],
+                cover.get("image_scope"),
+                round(float(cover.get("file_size_bytes") or 0) / 1024, 1),
             )
         except Exception as exc:
             result["failed"] += 1
@@ -517,125 +533,6 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
             log.warning("Không bổ sung được ảnh cho bài cũ '%s' (%s)", title[:100], type(exc).__name__)
 
     return result
-
-
-def build_site_payload(article: dict, draft: dict) -> dict:
-    title = clean(draft.get("seo_title") or article.get("source_title"))[:220]
-    content_html = draft.get("seo_content") or ""
-    # Auto-publishing must not put unlicensed source images or rights-review placeholders live.
-    if not SOURCE_IMAGE_REUSE_AUTHORIZED and content_html:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(content_html, "html.parser")
-        for placeholder in soup.select("figure.image-rights-review"):
-            placeholder.decompose()
-        content_html = str(soup)
-    if not title or len(clean(re.sub(r"<[^>]+>", " ", content_html))) < 120:
-        raise ValueError("Bản nháp không đủ tiêu đề hoặc nội dung để gửi website.")
-    if len(content_html) > 490_000:
-        raise ValueError("Nội dung HTML quá dài so với giới hạn API website 500 KB.")
-
-    excerpt = clean(draft.get("seo_description") or article.get("source_summary"))[:500]
-    seo_description = clean(draft.get("seo_description") or article.get("source_summary"))[:320]
-    images = _image_candidates(article)
-    cover_image = ""
-    cover_alt = ""
-    cover_credit = ""
-    editorial_cover = article.get("editorial_cover_image")
-    if isinstance(editorial_cover, dict):
-        from image_finder import is_license_allowed
-        if (
-            editorial_cover.get("rights_status") != "license_metadata_checked"
-            or not is_license_allowed(clean(editorial_cover.get("license")))
-            or not clean(editorial_cover.get("url")).startswith("https://")
-        ):
-            raise ValueError("Ảnh đại diện không đạt kiểm tra giấy phép hoặc URL.")
-        if (
-            editorial_cover.get("asset_storage") != "vercel_blob"
-            or editorial_cover.get("processed_format") != "webp"
-        ):
-            raise ValueError("Ảnh bìa phải được tải về, chuyển WebP và lưu trong Vercel Blob trước khi xuất bản.")
-        cover_image = clean(editorial_cover.get("url"))
-        cover_alt = clean(editorial_cover.get("alt") or title)[:300]
-        cover_credit = _cover_credit(editorial_cover)
-    elif SOURCE_IMAGE_REUSE_AUTHORIZED:
-        cover_image = clean(article.get("source_image_url"))
-        if not cover_image and images:
-            cover_image = clean(images[0].get("url"))
-        if not cover_image.startswith("https://"):
-            cover_image = ""
-        if images:
-            cover_alt = clean(images[0].get("alt") or images[0].get("caption") or title)[:300]
-        else:
-            cover_alt = title[:300]
-
-    if not cover_image:
-        raise ValueError("Không xuất bản bài viết khi thiếu ảnh đại diện hợp lệ.")
-
-    tags = []
-    tags.extend(_parse_list(draft.get("primary_keyword")))
-    tags.extend(_parse_list(draft.get("secondary_keywords")))
-    tags.extend(_parse_list(article.get("destination_countries")))
-    tags.extend([clean(article.get("destination_country")), clean(article.get("destination_city"))])
-    topic_labels = {
-        "travel-guide": "cẩm nang du lịch", "travel-tips": "kinh nghiệm du lịch",
-        "food-culture": "ẩm thực địa phương", "food": "ẩm thực", "hotel-review": "review khách sạn",
-        "hotel-lodging": "khách sạn và lưu trú", "culture-local-life": "văn hóa địa phương",
-        "itinerary": "lịch trình du lịch", "outdoor-adventure": "du lịch khám phá",
-        "city-guide": "cẩm nang thành phố", "destination-guide": "điểm đến",
-        "budget-travel": "du lịch tiết kiệm", "family-travel": "du lịch gia đình",
-    }
-    for topic in _parse_list(article.get("topic_categories")):
-        tags.append(topic_labels.get(topic.casefold(), topic.replace("-", " ")))
-    final_tags, seen = [], set()
-    for tag in tags:
-        tag = clean(tag)[:80]
-        if tag and tag.casefold() not in seen:
-            final_tags.append(tag)
-            seen.add(tag.casefold())
-        if len(final_tags) >= 20:
-            break
-
-    category = _category_for(article)
-    source_url = normalize_source_url(clean(article.get("source_url")))
-    source_name = clean(article.get("source_name") or article.get("source_publisher") or article.get("source_domain") or urlparse(source_url).hostname or "Nguồn tham khảo")[:200]
-    return {
-        "title": title,
-        "excerpt": excerpt,
-        "contentHtml": content_html,
-        "coverImage": cover_image,
-        "coverAlt": cover_alt,
-        "coverCredit": cover_credit,
-        "category": category,
-        "tags": final_tags,
-        "sourceUrl": source_url,
-        "sourceName": source_name,
-        "authorName": "Ban biên tập",
-        "seoTitle": title,
-        "seoDescription": seo_description,
-        "featured": False,
-        # API publishes this new article only when INGEST_AUTO_PUBLISH=true is enabled.
-        "status": "published",
-    }
-
-
-def _record_sync(db_path: str, source_url: str, *, post_id=None, slug=None, status="failed", site_url=None, error=None):
-    with sqlite3.connect(db_path, timeout=30) as conn:
-        conn.execute("PRAGMA busy_timeout=30000")
-        conn.execute("""
-            INSERT INTO website_sync(source_url, site_post_id, site_slug, site_status, site_url, last_synced_at, sync_error)
-            VALUES(?,?,?,?,?,?,?)
-            ON CONFLICT(source_url) DO UPDATE SET
-                site_post_id=COALESCE(excluded.site_post_id, website_sync.site_post_id),
-                site_slug=COALESCE(excluded.site_slug, website_sync.site_slug),
-                site_status=excluded.site_status,
-                site_url=COALESCE(excluded.site_url, website_sync.site_url),
-                last_synced_at=excluded.last_synced_at,
-                sync_error=excluded.sync_error
-        """, (source_url, str(post_id) if post_id else None, slug, status, site_url, now_iso(), clean(error)[:1000] or None))
-        conn.commit()
-
-
-
 
 def recheck_published_cover_images(
     db_path: str | None = None,

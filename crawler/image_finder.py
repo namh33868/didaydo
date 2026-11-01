@@ -1,6 +1,6 @@
 """Find SEO cover images from openly licensed libraries with strict location matching.
 
-Only CC0/Public Domain and CC BY/CC-SA images are considered. Original article images
+Only CC0/Public Domain and CC BY images are considered. Original article images
 are used as visual-search references, never copied as reusable files. There is no
 generic-category fallback: unmatched articles are held for review.
 """
@@ -74,7 +74,7 @@ def _clean_html(value: str) -> str:
 
 
 def is_license_allowed(license_name: str) -> bool:
-    """Allow commercial-friendly CC0/PD/CC BY/CC BY-SA; reject NC and ND."""
+    """Allow CC0/PD/CC BY; reject NC, ND, and ShareAlike pending compatible terms."""
     value = _normalise(license_name)
     if not value:
         return False
