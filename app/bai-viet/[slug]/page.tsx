@@ -46,7 +46,7 @@ function makeArticleBody(html: string) {
   const counts = new Map<string, number>();
   // Hide image credits, providers and license notes in new and legacy posts.
   // Descriptive captions such as place or scene names remain visible.
-  const withoutImageAttribution = html.replace(/<figcaption\\b[^>]*>[\\s\\S]*?<\\/figcaption>/gi, (caption) => {
+  const withoutImageAttribution = html.replace(/<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi, (caption) => {
     const text = caption.replace(/<[^>]*>/g, " ").toLocaleLowerCase("vi");
     const privateImageMarkers = [
       "nguồn ảnh", "giấy phép", "ảnh:", "photo by", "image credit",
