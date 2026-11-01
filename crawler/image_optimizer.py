@@ -148,20 +148,23 @@ def _request_logo_review(preview_bytes: bytes) -> dict:
             contents=[
                 (
                     "Inspect this travel photo for visible logos or watermarks. "
-                    "Return only JSON with keys has_logo_or_watermark (boolean), "
-                    "confidence (high, medium, or low), and reason (short string). "
-                    "Set true for any visible company/brand logo, publisher logo, "
-                    "photographer watermark, stock-photo watermark, text logo, or "
-                    "semi-transparent mark over the image. Set false only when you "
-                    "are highly confident no such mark is visible. Do not judge "
-                    "copyright or image ownership. If uncertain, use low confidence."
+                    "Return JSON with has_logo_or_watermark (boolean), confidence "
+                    "(high, medium, or low), reason (short string), and marks (array). "
+                    "For every visible logo/watermark, return one marks item with "
+                    "bbox as [x_min,y_min,x_max,y_max] normalized from 0 to 1000, "
+                    "where x is horizontal and y is vertical; also include kind "
+                    "(logo, watermark, or text_mark). Box the smallest complete "
+                    "visible mark, not the underlying object. Include every mark. "
+                    "If none are visible, return marks as []. If uncertain about "
+                    "presence or location, say so and use low confidence. Do not "
+                    "judge copyright or image ownership."
                 ),
                 types.Part.from_bytes(data=preview_bytes, mime_type="image/jpeg"),
             ],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=0,
-                max_output_tokens=180,
+                max_output_tokens=320,
             ),
         )
         raw = (response.text or "").strip()
@@ -170,10 +173,29 @@ def _request_logo_review(preview_bytes: bytes) -> dict:
         review = json.loads(raw)
         if not isinstance(review, dict):
             raise ValueError("invalid vision response")
+        marks = []
+        raw_marks = review.get("marks") if isinstance(review.get("marks"), list) else []
+        for item in raw_marks[:8]:
+            if not isinstance(item, dict):
+                continue
+            raw_box = item.get("bbox")
+            if not isinstance(raw_box, (list, tuple)) or len(raw_box) != 4:
+                continue
+            try:
+                x1, y1, x2, y2 = [max(0.0, min(1000.0, float(value))) for value in raw_box]
+            except (TypeError, ValueError):
+                continue
+            if x2 <= x1 or y2 <= y1:
+                continue
+            marks.append({
+                "bbox": [x1, y1, x2, y2],
+                "kind": _plain(item.get("kind") or "logo")[:40],
+            })
         return {
             "has_logo_or_watermark": review.get("has_logo_or_watermark"),
             "confidence": _plain(review.get("confidence")).casefold(),
             "reason": _plain(review.get("reason"))[:240],
+            "marks": marks,
             "model": model,
         }
     except ImageProcessingError:
@@ -218,6 +240,195 @@ def verify_no_visible_logo(source_bytes: bytes) -> dict:
         "confidence": "high",
         "model": _plain(review.get("model")),
         "reason": _plain(review.get("reason"))[:240],
+    }
+
+
+def _make_logo_review_preview(source_bytes: bytes) -> bytes:
+    """Create the same bounded preview used for both initial and final visual checks."""
+    try:
+        with Image.open(io.BytesIO(source_bytes)) as opened:
+            if opened.format not in {"JPEG", "PNG", "WEBP", "BMP", "TIFF"}:
+                raise ImageProcessingError("Định dạng ảnh không được hỗ trợ để kiểm tra logo.")
+            preview = ImageOps.exif_transpose(opened).convert("RGB")
+            preview.thumbnail((768, 768), Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            preview.save(output, format="JPEG", quality=82, optimize=True)
+            preview.close()
+            return output.getvalue()
+    except ImageProcessingError:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ImageProcessingError(
+            f"Không tạo được ảnh xem xét logo ({type(exc).__name__})."
+        ) from None
+
+
+def _pixel_boxes(marks: list[dict], width: int, height: int) -> list[tuple[int, int, int, int]]:
+    boxes = []
+    for mark in marks:
+        raw = mark.get("bbox") if isinstance(mark, dict) else None
+        if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+            continue
+        x1, y1, x2, y2 = raw
+        box = (
+            max(0, min(width - 1, round(float(x1) * width / 1000))),
+            max(0, min(height - 1, round(float(y1) * height / 1000))),
+            max(1, min(width, round(float(x2) * width / 1000))),
+            max(1, min(height, round(float(y2) * height / 1000))),
+        )
+        if box[2] > box[0] and box[3] > box[1]:
+            boxes.append(box)
+    return boxes
+
+
+def _crop_or_inpaint_logo_marks(source_bytes: bytes, marks: list[dict]) -> tuple[bytes, list[str]]:
+    """Remove small visible marks by safe edge cropping or localized OpenCV inpainting."""
+    try:
+        import cv2
+        import numpy as np
+    except ImportError as exc:
+        raise ImageProcessingError(
+            "Thiếu OpenCV để xử lý logo/watermark; không thể tự ý đăng ảnh còn dấu."
+        ) from exc
+
+    try:
+        with Image.open(io.BytesIO(source_bytes)) as opened:
+            image = ImageOps.exif_transpose(opened).convert("RGB")
+            image.load()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ImageProcessingError(
+            f"Không giải mã được ảnh để xử lý logo ({type(exc).__name__})."
+        ) from None
+
+    boxes = _pixel_boxes(marks, image.width, image.height)
+    if not boxes:
+        image.close()
+        raise ImageProcessingError("AI phát hiện logo nhưng không trả được vùng tọa độ hợp lệ.")
+
+    actions: list[str] = []
+    for original_box in boxes:
+        width, height = image.size
+        x1, y1, x2, y2 = original_box
+        if x1 >= width or y1 >= height or x2 <= 0 or y2 <= 0:
+            continue
+        x1, x2 = max(0, x1), min(width, x2)
+        y1, y2 = max(0, y1), min(height, y2)
+        box_width, box_height = x2 - x1, y2 - y1
+        if box_width <= 0 or box_height <= 0:
+            continue
+
+        padding = max(5, round(max(box_width, box_height) * 0.22))
+        edge_crops = []
+        if x1 <= width * 0.04:
+            cut = min(width, x2 + padding)
+            edge_crops.append(("crop_left", cut, cut / width))
+        if x2 >= width * 0.96:
+            cut = max(0, x1 - padding)
+            edge_crops.append(("crop_right", width - cut, (width - cut) / width))
+        if y1 <= height * 0.04:
+            cut = min(height, y2 + padding)
+            edge_crops.append(("crop_top", cut, cut / height))
+        if y2 >= height * 0.96:
+            cut = max(0, y1 - padding)
+            edge_crops.append(("crop_bottom", height - cut, (height - cut) / height))
+
+        safe_crops = [
+            item for item in edge_crops
+            if item[2] <= 0.14
+            and (width - item[1] >= 300 if item[0] in {"crop_left", "crop_right"} else height - item[1] >= 200)
+        ]
+        if safe_crops:
+            direction, cut, _ratio = min(safe_crops, key=lambda item: item[2])
+            if direction == "crop_left":
+                image = image.crop((cut, 0, width, height))
+                boxes = [(a - cut, b, c - cut, d) for a, b, c, d in boxes]
+            elif direction == "crop_right":
+                image = image.crop((0, 0, width - cut, height))
+                boxes = [(a, b, c, d) for a, b, c, d in boxes]
+            elif direction == "crop_top":
+                image = image.crop((0, cut, width, height))
+                boxes = [(a, b - cut, c, d - cut) for a, b, c, d in boxes]
+            else:
+                image = image.crop((0, 0, width, height - cut))
+                boxes = [(a, b, c, d) for a, b, c, d in boxes]
+            actions.append(direction)
+            continue
+
+        # Inpainting is deliberately limited to small marks. Large or central
+        # translucent watermarks are not reliably reconstructable without damage.
+        if (
+            box_width > width * 0.12
+            or box_height > height * 0.12
+            or (box_width * box_height) > (width * height * 0.018)
+        ):
+            image.close()
+            raise ImageProcessingError(
+                "Logo/watermark quá lớn hoặc nằm sâu trong ảnh; cắt/xóa tự động có thể làm hỏng ảnh."
+            )
+
+        left = max(0, x1 - padding)
+        top = max(0, y1 - padding)
+        right = min(width, x2 + padding)
+        bottom = min(height, y2 + padding)
+        rgb = np.asarray(image, dtype=np.uint8)
+        mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.rectangle(mask, (left, top), (right - 1, bottom - 1), 255, thickness=-1)
+        repaired = cv2.inpaint(rgb, mask, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
+        image.close()
+        image = Image.fromarray(repaired, mode="RGB")
+        actions.append("inpaint")
+
+    if image.width < 300 or image.height < 200:
+        image.close()
+        raise ImageProcessingError("Cắt logo khiến ảnh còn lại quá nhỏ để xuất bản.")
+
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    image.close()
+    return output.getvalue(), actions
+
+
+def clean_visible_logo_marks(source_bytes: bytes) -> tuple[bytes, dict]:
+    """Crop edge logos or inpaint small internal marks, then visually verify the result."""
+    if not source_bytes:
+        raise ImageProcessingError("Không có dữ liệu ảnh để kiểm tra logo.")
+
+    initial = _request_logo_review(_make_logo_review_preview(source_bytes))
+    if initial.get("has_logo_or_watermark") is False:
+        if initial.get("confidence") != "high":
+            raise ImageProcessingError("Không đủ độ tin cậy để xác nhận ảnh sạch logo.")
+        return source_bytes, {
+            "status": "no_visible_logo",
+            "confidence": "high",
+            "model": _plain(initial.get("model")),
+            "actions": [],
+            "reason": _plain(initial.get("reason"))[:240],
+        }
+
+    if initial.get("has_logo_or_watermark") is not True:
+        raise ImageProcessingError("AI không xác định rõ ảnh có logo/watermark hay không.")
+    if initial.get("confidence") not in {"high", "medium"}:
+        raise ImageProcessingError("AI chưa xác định đủ rõ vị trí logo/watermark để xử lý an toàn.")
+
+    cleaned_bytes, actions = _crop_or_inpaint_logo_marks(
+        source_bytes,
+        initial.get("marks") or [],
+    )
+    final_review = _request_logo_review(_make_logo_review_preview(cleaned_bytes))
+    if (
+        final_review.get("has_logo_or_watermark") is not False
+        or final_review.get("confidence") != "high"
+    ):
+        raise ImageProcessingError(
+            "Ảnh vẫn có dấu logo/watermark hoặc kết quả kiểm tra sau xử lý chưa đủ chắc chắn."
+        )
+
+    return cleaned_bytes, {
+        "status": "no_visible_logo",
+        "confidence": "high",
+        "model": _plain(final_review.get("model") or initial.get("model")),
+        "actions": actions,
+        "reason": _plain(final_review.get("reason"))[:240],
     }
 
 
@@ -453,13 +664,10 @@ def process_and_upload_cover_image(
 ) -> dict:
     """Download, optimize, name, alt, and upload one rights-checked cover candidate."""
     source_url = _plain(candidate.get("original_url") or candidate.get("url"))
-    if _has_watermark_hint(candidate, source_url):
-        raise ImageProcessingError(
-            "Metadata ảnh có dấu hiệu watermark/preview; loại ứng viên, không xóa watermark."
-        )
-
     source_bytes = download_image_bytes(source_url)
-    logo_review = verify_no_visible_logo(source_bytes)
+    if _has_watermark_hint(candidate, source_url):
+        log.info("Ảnh có metadata gợi ý logo/watermark; sẽ thử crop/inpainting rồi kiểm tra lại.")
+    source_bytes, logo_review = clean_visible_logo_marks(source_bytes)
     optimized = optimize_image_bytes(
         source_bytes,
         max_width=max_width,
@@ -489,7 +697,7 @@ def process_and_upload_cover_image(
         "compression_quality": optimized["quality"],
         "target_size_met": optimized["target_met"],
         "alt": build_vietnamese_alt_text(candidate, article),
-        "watermark_policy": "not_removed; metadata_and_vision_checked",
+        "watermark_policy": "cropped_or_inpainted_when_safe; final_vision_check_passed",
         "logo_review": logo_review,
     })
     log.info(
