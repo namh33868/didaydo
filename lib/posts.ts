@@ -7,7 +7,7 @@ export async function getPublishedPosts(limit = 12, offset = 0) {
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-      cover_image, cover_alt, cover_credit, category_name, category_slug,
+      cover_image, cover_alt, category_name, category_slug,
       country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
       tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
       published_at, created_at, updated_at
@@ -23,7 +23,7 @@ export async function getRecentPosts(limit = 6, excludeSlug?: string) {
     return db<PostSummary[]>`
       SELECT id, title, slug, excerpt,
         char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-        cover_image, cover_alt, cover_credit, category_name, category_slug,
+        cover_image, cover_alt, category_name, category_slug,
         country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
         tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
         published_at, created_at, updated_at
@@ -35,7 +35,7 @@ export async function getRecentPosts(limit = 6, excludeSlug?: string) {
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-      cover_image, cover_alt, cover_credit, category_name, category_slug,
+      cover_image, cover_alt, category_name, category_slug,
       country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
       tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
       published_at, created_at, updated_at
@@ -50,7 +50,7 @@ export async function getWorldPosts(limit = 8) {
   return db<PostSummary[]>`
     SELECT p.id, p.title, p.slug, p.excerpt,
       char_length(regexp_replace(p.content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-      p.cover_image, p.cover_alt, p.cover_credit, p.category_name, p.category_slug,
+      p.cover_image, p.cover_alt, p.category_name, p.category_slug,
       p.country_id, p.country_name, p.country_slug, p.destination_id, p.destination_name, p.destination_slug,
       p.tags, p.status, p.featured, p.author_name, p.source_url, p.source_name, p.seo_title, p.seo_description,
       p.published_at, p.created_at, p.updated_at
@@ -72,7 +72,7 @@ export async function getFeaturedPosts(limit = 8) {
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-      cover_image, cover_alt, cover_credit, category_name, category_slug,
+      cover_image, cover_alt, category_name, category_slug,
       country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
       tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
       published_at, created_at, updated_at
@@ -85,16 +85,26 @@ export async function getFeaturedPosts(limit = 8) {
 
 export async function getFeaturedPost() {
   await ensureFeaturedSchedule();
-  const rows = await db<PostRecord[]>`
-    SELECT * FROM posts WHERE status = 'published' AND published_at <= NOW()
+  const rows = await db<Omit<PostRecord, "cover_credit">[]>`
+    SELECT id, title, slug, excerpt, content_html, cover_image, cover_alt,
+      category_name, category_slug, country_id, country_name, country_slug,
+      destination_id, destination_name, destination_slug, created_by, updated_by,
+      tags, status, featured, featured_until, author_name, source_url, source_name,
+      seo_title, seo_description, published_at, created_at, updated_at
+    FROM posts WHERE status = 'published' AND published_at <= NOW()
     ORDER BY featured DESC, published_at DESC NULLS LAST LIMIT 1
   `;
   return rows[0] ?? null;
 }
 
 export async function getPostBySlug(slug: string) {
-  const rows = await db<PostRecord[]>`
-    SELECT * FROM posts WHERE slug = ${slug} AND status = 'published' AND published_at <= NOW() LIMIT 1
+  const rows = await db<Omit<PostRecord, "cover_credit">[]>`
+    SELECT id, title, slug, excerpt, content_html, cover_image, cover_alt,
+      category_name, category_slug, country_id, country_name, country_slug,
+      destination_id, destination_name, destination_slug, created_by, updated_by,
+      tags, status, featured, featured_until, author_name, source_url, source_name,
+      seo_title, seo_description, published_at, created_at, updated_at
+    FROM posts WHERE slug = ${slug} AND status = 'published' AND published_at <= NOW() LIMIT 1
   `;
   return rows[0] ?? null;
 }
@@ -104,7 +114,7 @@ export async function getPostsByCategory(slug: string, limit = 12, offset = 0) {
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-      cover_image, cover_alt, cover_credit, category_name, category_slug,
+      cover_image, cover_alt, category_name, category_slug,
       country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
       tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
       published_at, created_at, updated_at
@@ -126,7 +136,7 @@ export async function searchPosts(query: string, limit = 30) {
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-      cover_image, cover_alt, cover_credit, category_name, category_slug,
+      cover_image, cover_alt, category_name, category_slug,
       country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
       tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
       published_at, created_at, updated_at
@@ -147,7 +157,7 @@ export async function getRelatedPosts(post: Pick<PostRecord, "slug" | "category_
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
-      cover_image, cover_alt, cover_credit, category_name, category_slug,
+      cover_image, cover_alt, category_name, category_slug,
       country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
       tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
       published_at, created_at, updated_at
