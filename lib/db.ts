@@ -48,4 +48,4 @@ export type PostRecord = {
 
 
 /** Lightweight record for lists/cards; full HTML is fetched only for the article page. */
-export type PostSummary = Omit<PostRecord, "content_html" | "created_by" | "updated_by"> & { content_length: number };
+export type PostSummary = Omit<PostRecord, "content_html" | "cover_credit" | "created_by" | "updated_by"> & { content_length: number };
