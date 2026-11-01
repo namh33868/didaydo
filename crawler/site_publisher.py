@@ -577,14 +577,16 @@ def _ensure_editorial_cover_image(
     return _ensure_source_article_images(article, db_path, draft=draft)
 
 
-def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) -> dict:
-    """Add licensed, optimized, self-hosted WebP covers to older published posts."""
+def backfill_missing_cover_images(
+    db_path: str | None = None,
+    limit: int = 5,
+    article_extractor=None,
+) -> dict:
+    """Fill old missing covers with source photos first, external licensed photos second."""
     if not SITE_SYNC_ENABLED or not SITE_URL or not SITE_INGEST_API_KEY:
         return {"checked": 0, "updated": 0, "unmatched": 0, "failed": 0, "skipped": True}
 
-    from image_finder import find_cover_image
-    from image_optimizer import build_vietnamese_alt_text
-
+    target_db = db_path or DATABASE_PATH
     _check_api_ready()
     maximum = max(1, min(int(limit), 25))
     try:
@@ -620,48 +622,82 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
     result = {"checked": len(posts), "updated": 0, "unmatched": 0, "failed": 0, "items": []}
 
     for post in posts:
-        source_url = clean(post.get("source_url"))
+        source_url = normalize_source_url(clean(post.get("source_url")))
         title = clean(post.get("title"))
         if not source_url or not title:
             result["failed"] += 1
             continue
 
+        category_name = clean(post.get("category_name")).casefold()
         article = {
             "source_url": source_url,
             "source_title": title,
-            "visual_search_title": clean(post.get("seo_title") or title),
-            "seo_title": clean(post.get("seo_title") or title),
+            "source_name": clean(post.get("source_name")),
             "source_summary": clean(post.get("excerpt")),
+            "visual_search_title": clean(post.get("seo_title") or title),
             "visual_search_summary": clean(post.get("seo_description") or post.get("excerpt")),
             "destination_country": clean(post.get("country_name")),
             "destination_city": clean(post.get("destination_name")),
-            "primary_category": category_map.get(clean(post.get("category_name")).casefold(), "travel-guide"),
+            "primary_category": category_map.get(category_name, "travel-guide"),
+            "topic_categories": [category_map.get(category_name, "travel-guide")],
+        }
+
+        # Older posts may not have source_images in the local SQLite cache.
+        # Re-read only the page metadata/image tags; don't download image files.
+        if article_extractor is not None:
+            host = urlparse(source_url).hostname or ""
+            item = {
+                "source_url": source_url,
+                "rss_title": title,
+                "rss_summary": clean(post.get("excerpt")),
+                "rss_published_at": "",
+                "rss_categories": [clean(post.get("category_name"))],
+                "rss_image_url": "",
+                "source_id": "",
+                "source_name": clean(post.get("source_name")),
+                "source_homepage": f"https://{host}" if host else "",
+                "source_domain": host,
+                "source_language": "vi",
+                "source_focus": [category_map.get(category_name, "travel-guide")],
+                "allowed_domains": [host] if host else [],
+                "permission_status": "operator_authorized_all_configured_sources",
+            }
+            try:
+                extracted = article_extractor(item)
+                if isinstance(extracted, dict):
+                    article.update(extracted)
+            except Exception as exc:
+                log.info(
+                    "Không lấy được metadata ảnh bài cũ; sẽ dùng ảnh ngoài nếu cache cũng trống (%s).",
+                    type(exc).__name__,
+                )
+
+            # Keep the website's canonical metadata as the source of truth.
+            article["source_url"] = source_url
+            article["source_title"] = title
+            article["source_name"] = clean(post.get("source_name") or article.get("source_name"))
+            article["source_summary"] = clean(post.get("excerpt") or article.get("source_summary"))
+            article["destination_country"] = clean(post.get("country_name") or article.get("destination_country"))
+            article["destination_city"] = clean(post.get("destination_name") or article.get("destination_city"))
+            article["primary_category"] = category_map.get(category_name, article.get("primary_category") or "travel-guide")
+            article["topic_categories"] = [article["primary_category"]]
+
+        draft = {
+            "seo_title": clean(post.get("seo_title") or title),
+            "meta_description": clean(post.get("seo_description") or post.get("excerpt")),
+            "seo_content": "",
         }
         try:
-            candidate = find_cover_image(article)
-            if not candidate:
+            cover = _ensure_source_article_images(article, target_db, draft=draft)
+            if not cover:
                 result["unmatched"] += 1
-                result["items"].append({"title": title[:160], "status": "no_licensed_match"})
+                result["items"].append({"title": title[:160], "status": "no_source_or_external_image"})
                 continue
-
-            # External image search is already license- and relevance-checked.
-            # Keep its HTTPS URL and metadata; do not download, run vision, re-encode,
-            # or upload a second copy for a cover-only backfill.
-            cover = dict(candidate)
-            cover_url = _normalize_source_image_url(cover.get("url"), cover.get("source_page_url") or source_url)
-            if not cover_url:
-                raise ValueError("Ảnh ngoài không có URL HTTPS hợp lệ.")
-            cover["original_url"] = clean(cover.get("url"))
-            cover["url"] = cover_url
-            cover["alt"] = build_vietnamese_alt_text(cover, article)
-            cover["source_name"] = clean(cover.get("provider") or cover.get("source_name") or "Kho ảnh mở")
-            cover["asset_storage"] = "external_source"
-            cover["processed_format"] = "original"
 
             payload = {
                 "title": title,
                 "excerpt": clean(post.get("excerpt")),
-                "coverImage": cover_url,
+                "coverImage": clean(cover.get("url")),
                 "coverAlt": clean(cover.get("alt") or title)[:300],
                 "coverCredit": _cover_credit(cover),
                 "country": clean(post.get("country_name")),
@@ -690,15 +726,14 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
             result["items"].append({
                 "title": title[:160],
                 "status": "updated",
-                "image_scope": cover.get("image_scope"),
-                "provider": cover.get("provider") or cover.get("source_name"),
-                "image_url": cover_url,
-                "storage": "external_source",
+                "provider": cover.get("source_name") or cover.get("provider"),
+                "image_url": payload["coverImage"],
+                "image_origin": cover.get("cover_role") or cover.get("placement_source"),
             })
             log.info(
-                "Đã bổ sung ảnh ngoài bằng URL trực tiếp: title=%s provider=%s",
+                "Đã bù ảnh cho bài cũ bằng URL trực tiếp: title=%s origin=%s",
                 title[:120],
-                cover.get("source_name"),
+                cover.get("cover_role") or cover.get("placement_source"),
             )
         except Exception as exc:
             result["failed"] += 1
@@ -706,6 +741,7 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
             log.warning("Không bổ sung được ảnh cho bài cũ '%s' (%s)", title[:100], type(exc).__name__)
 
     return result
+
 
 def recheck_published_cover_images(
     db_path: str | None = None,
