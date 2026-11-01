@@ -45,7 +45,7 @@ _TAXONOMY = _read_json_config(TAXONOMY_CONFIG_PATH, {"countries": [], "topics": 
 ALLOW_FULL_TEXT_STORAGE = os.getenv("ALLOW_FULL_TEXT_STORAGE", "false").strip().lower() in {"1", "true", "yes"}
 # Chỉ nhúng ảnh nguồn thật vào HTML đăng bài khi người vận hành xác nhận đã có quyền sử dụng.
 # Nếu false, ảnh vẫn được trích xuất/tham chiếu và đặt placeholder đúng vị trí trong bản nháp.
-SOURCE_IMAGE_REUSE_AUTHORIZED = os.getenv("SOURCE_IMAGE_REUSE_AUTHORIZED", "false").strip().lower() in {"1", "true", "yes"}
+SOURCE_IMAGE_REUSE_AUTHORIZED = os.getenv("SOURCE_IMAGE_REUSE_AUTHORIZED", "true").strip().lower() in {"1", "true", "yes"}
 MAX_SOURCE_BODY_CHARS = max(3000, min(int(os.getenv("MAX_SOURCE_BODY_CHARS", "22000")), 40000))
 # Smart context mode: fetch the accessible article text in memory so the writer has
 # enough facts, but do not persist the source's full text by default. Crucially, this
