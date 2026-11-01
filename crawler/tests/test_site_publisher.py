@@ -149,6 +149,7 @@ class SitePublisherSyncStateTests(unittest.TestCase):
 
             payload = site_publisher.build_site_payload(article, draft)
             self.assertEqual(payload["coverImage"], hosted_url)
+            self.assertNotIn(original_url, payload["contentHtml"])
             self.assertEqual(payload["status"], "published")
             self.assertEqual(payload["sourceUrl"], "https://travel.example.com/ha-long-bay")
             self.assertIn("vịnh Hạ Long", payload["coverAlt"])
