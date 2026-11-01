@@ -276,26 +276,6 @@ def _stored_image_list(article: dict) -> list[dict]:
     return [item for item in images if isinstance(item, dict)]
 
 
-def _cover_credit(image: dict) -> str:
-    creator = clean(image.get("credit") or image.get("creator") or "Không rõ tác giả")
-    provider = clean(image.get("source_name") or image.get("provider") or "Kho ảnh mở")
-    license_name = clean(image.get("license") or "")
-    source_page = clean(image.get("source_page_url") or "")
-    license_url = clean(image.get("license_url") or "")
-    parts = [f"Ảnh: {creator}", provider]
-    if license_name:
-        parts.append(license_name)
-    if source_page:
-        parts.append("Nguồn ảnh: " + source_page)
-    if license_url:
-        parts.append("Giấy phép: " + license_url)
-    if image.get("asset_storage") == "vercel_blob" and image.get("processed_format") == "webp":
-        dimensions = f'{image.get("width", "")}×{image.get("height", "")}'.strip("×")
-        size_kb = round(float(image.get("file_size_bytes") or 0) / 1024, 1)
-        parts.append(f"Đã xử lý WebP{f' {dimensions}' if dimensions else ''}, {size_kb} KB")
-    return " · ".join(parts)[:1200]
-
-
 def build_site_payload(article: dict, draft: dict) -> dict:
     """Build the exact payload accepted by the website's authenticated ingest route."""
     cover = article.get("editorial_cover_image")
@@ -341,7 +321,6 @@ def build_site_payload(article: dict, draft: dict) -> dict:
         "contentHtml": content_html[:500000],
         "coverImage": cover_url,
         "coverAlt": clean(cover.get("alt") or title)[:300],
-        "coverCredit": _cover_credit(cover),
         "country": clean(article.get("destination_country"))[:120],
         "destination": clean(article.get("destination_city") or article.get("destination"))[:120],
         "category": _category_for(article),
@@ -516,6 +495,18 @@ def _ensure_source_article_images(
                     image_tag["alt"] = clean(image.get("alt") or image_tag.get("alt") or article.get("source_title"))[:300]
                     image_tag["loading"] = "lazy"
                     image_tag["decoding"] = "async"
+                    # Image rights/source metadata stays in the crawler's private
+                    # state only. Never publish attribution text below an image.
+                    figure = image_tag.find_parent("figure")
+                    caption = figure.find("figcaption") if figure else None
+                    if caption:
+                        caption_text = clean(caption.get_text(" ", strip=True)).casefold()
+                        attribution_markers = (
+                            "nguồn ảnh", "giấy phép", "ảnh:", "photo by",
+                            "image credit", "credit:", "courtesy of",
+                        )
+                        if any(marker in caption_text for marker in attribution_markers):
+                            caption.decompose()
                     # Use one stable original URL instead of asking the browser
                     # to choose a potentially stale srcset candidate.
                     image_tag.attrs.pop("srcset", None)
@@ -700,7 +691,6 @@ def backfill_missing_cover_images(
                 "excerpt": clean(post.get("excerpt")),
                 "coverImage": clean(cover.get("url")),
                 "coverAlt": clean(cover.get("alt") or title)[:300],
-                "coverCredit": _cover_credit(cover),
                 "country": clean(post.get("country_name")),
                 "destination": clean(post.get("destination_name")),
                 "category": clean(post.get("category_name")) or "Cẩm nang",
