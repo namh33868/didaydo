@@ -1,0 +1,51 @@
+name: Verify Didaydo image storage
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: \${{ secrets.SITE_URL }}
+      SITE_INGEST_API_KEY: \${{ secrets.SITE_INGEST_API_KEY }}
+
+    steps:
+      - name: Check required secrets
+        shell: bash
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "Missing GitHub Actions secret SITE_URL."
+            exit 1
+          fi
+          if [ -z "$SITE_INGEST_API_KEY" ]; then
+            echo "Missing GitHub Actions secret SITE_INGEST_API_KEY."
+            exit 1
+          fi
+
+      - name: Verify Vercel Blob access through Didaydo API
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          url = os.environ["SITE_URL"].rstrip("/") + "/api/internal/images"
+          request = urllib.request.Request(
+              url,
+              headers={"Authorization": "Bearer " + os.environ["SITE_INGEST_API_KEY"]},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  result = json.loads(response.read().decode("utf-8"))
+          except Exception as exc:
+              raise SystemExit(f"Image storage verification failed: {type(exc).__name__}")
+
+          if result.get("ok") is not True or result.get("storage") != "vercel-blob":
+              raise SystemExit("Didaydo API could not verify access to the connected Vercel Blob store.")
+          print("SUCCESS: Didaydo can access its Vercel Blob image store.")
+          print("No article crawl was started; no AI provider was called.")
+          PY
