@@ -27,7 +27,7 @@ SITE_SYNC_ENABLED = os.getenv("SITE_SYNC_ENABLED", "false").strip().lower() in {
 SITE_URL = os.getenv("SITE_URL", os.getenv("NEXT_PUBLIC_SITE_URL", "")).strip().rstrip("/")
 SITE_INGEST_API_KEY = os.getenv("SITE_INGEST_API_KEY", "").strip()
 SITE_API_TIMEOUT = max(5, min(int(os.getenv("SITE_API_TIMEOUT_SECONDS", "20")), 60))
-SOURCE_IMAGE_REUSE_AUTHORIZED = os.getenv("SOURCE_IMAGE_REUSE_AUTHORIZED", "false").strip().lower() in {"1", "true", "yes", "on"}
+SOURCE_IMAGE_REUSE_AUTHORIZED = os.getenv("SOURCE_IMAGE_REUSE_AUTHORIZED", "true").strip().lower() in {"1", "true", "yes", "on"}
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/travel_content.db").strip() or "data/travel_content.db"
 if not os.path.isabs(DATABASE_PATH):
     DATABASE_PATH = str(PROJECT_DIR / DATABASE_PATH)
@@ -396,7 +396,7 @@ def _ensure_source_article_images(
         item for item in stored_images
         if item.get("placement_source") in {"og:image_fallback", "rss_image_fallback"}
     ]
-    candidates = body_images or fallback_images
+    candidates = body_images + fallback_images
     if not candidates:
         log.warning("Bài nguồn không có ảnh để xử lý: %s", source_url)
         return None
