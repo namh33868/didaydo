@@ -6,6 +6,10 @@ on:
     - cron: "15 10 * * *"
       timezone: "Asia/Ho_Chi_Minh"
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Verify Didaydo image upload"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -16,6 +20,7 @@ concurrency:
 
 jobs:
   crawl-and-publish:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     defaults:
