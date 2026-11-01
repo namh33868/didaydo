@@ -1,7 +1,12 @@
-name: Verify Didaydo image storage
+name: Verify Didaydo image upload
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/verify-image-storage.yml
 
 permissions:
   contents: read
@@ -26,26 +31,106 @@ jobs:
             exit 1
           fi
 
-      - name: Verify Vercel Blob access through Didaydo API
+      - name: Prepare Python image tooling
+        run: python -m pip install --disable-pip-version-check Pillow
+
+      - name: Verify Vercel Blob read access
         run: |
           python - <<'PY'
           import json
           import os
           import urllib.request
 
-          url = os.environ["SITE_URL"].rstrip("/") + "/api/internal/images"
+          api_url = os.environ["SITE_URL"].rstrip("/") + "/api/internal/images"
           request = urllib.request.Request(
-              url,
+              api_url,
               headers={"Authorization": "Bearer " + os.environ["SITE_INGEST_API_KEY"]},
           )
           try:
               with urllib.request.urlopen(request, timeout=30) as response:
                   result = json.loads(response.read().decode("utf-8"))
           except Exception as exc:
-              raise SystemExit(f"Image storage verification failed: {type(exc).__name__}")
+              raise SystemExit(f"Image storage preflight failed: {type(exc).__name__}")
 
           if result.get("ok") is not True or result.get("storage") != "vercel-blob":
               raise SystemExit("Didaydo API could not verify access to the connected Vercel Blob store.")
           print("SUCCESS: Didaydo can access its Vercel Blob image store.")
+          PY
+
+      - name: Upload a real 1x1 WebP and verify public read
+        run: |
+          python - <<'PY'
+          import hashlib
+          import io
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.parse import urlparse
+          from urllib.request import Request, urlopen
+
+          from PIL import Image
+
+          image_buffer = io.BytesIO()
+          Image.new("RGB", (1, 1), (45, 120, 180)).save(
+              image_buffer,
+              format="WEBP",
+              quality=50,
+              method=6,
+          )
+          payload = image_buffer.getvalue()
+          digest = hashlib.sha256(payload).hexdigest()[:12]
+          filename = f"oidc-write-test-{digest}.webp"
+
+          if len(payload) > 512 * 1024:
+              raise SystemExit("Generated test WebP unexpectedly exceeds the API size limit.")
+          if payload[:4] != b"RIFF" or payload[8:12] != b"WEBP":
+              raise SystemExit("Pillow did not generate a valid WebP payload.")
+
+          api_url = os.environ["SITE_URL"].rstrip("/") + "/api/internal/images"
+          request = Request(
+              api_url,
+              data=payload,
+              method="POST",
+              headers={
+                  "Authorization": "Bearer " + os.environ["SITE_INGEST_API_KEY"],
+                  "Content-Type": "image/webp",
+                  "X-Image-Filename": filename,
+              },
+          )
+
+          try:
+              with urlopen(request, timeout=45) as response:
+                  result = json.loads(response.read().decode("utf-8"))
+          except HTTPError as exc:
+              detail = exc.read().decode("utf-8", errors="replace")[:500]
+              raise SystemExit(f"Upload returned HTTP {exc.code}: {detail}")
+          except Exception as exc:
+              raise SystemExit(f"Upload request failed: {type(exc).__name__}")
+
+          blob_url = result.get("url", "")
+          expected_path = "images/covers/" + filename
+          if result.get("ok") is not True:
+              raise SystemExit(f"Upload API did not confirm success: {result}")
+          if result.get("pathname") != expected_path:
+              raise SystemExit("Upload API returned an unexpected Blob pathname.")
+          if result.get("bytes") != len(payload):
+              raise SystemExit("Upload API returned an unexpected byte count.")
+          if urlparse(blob_url).scheme != "https":
+              raise SystemExit("Upload API did not return a public HTTPS URL.")
+
+          try:
+              with urlopen(blob_url, timeout=30) as response:
+                  stored_bytes = response.read()
+                  content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+          except Exception as exc:
+              raise SystemExit(f"Public Blob read-back failed: {type(exc).__name__}")
+
+          if stored_bytes != payload or content_type != "image/webp":
+              raise SystemExit("Public Blob read-back did not match the uploaded WebP.")
+
+          print("SUCCESS: POST upload to Vercel Blob completed.")
+          print(f"Test file: {filename} ({len(payload)} bytes)")
+          print(f"Public URL: {blob_url}")
+          print("SUCCESS: anonymous public read returned the exact uploaded bytes.")
           print("No article crawl was started; no AI provider was called.")
           PY
