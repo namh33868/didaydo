@@ -583,7 +583,7 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
         return {"checked": 0, "updated": 0, "unmatched": 0, "failed": 0, "skipped": True}
 
     from image_finder import find_cover_image
-    from image_optimizer import process_and_upload_cover_image
+    from image_optimizer import build_vietnamese_alt_text
 
     _check_api_ready()
     maximum = max(1, min(int(limit), 25))
@@ -644,14 +644,24 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
                 result["items"].append({"title": title[:160], "status": "no_licensed_match"})
                 continue
 
-            # Old published posts must follow the same download → WebP → Blob path
-            # as new posts. Never backfill a remote source URL directly.
-            cover = process_and_upload_cover_image(candidate, article)
+            # External image search is already license- and relevance-checked.
+            # Keep its HTTPS URL and metadata; do not download, run vision, re-encode,
+            # or upload a second copy for a cover-only backfill.
+            cover = dict(candidate)
+            cover_url = _normalize_source_image_url(cover.get("url"), cover.get("source_page_url") or source_url)
+            if not cover_url:
+                raise ValueError("Ảnh ngoài không có URL HTTPS hợp lệ.")
+            cover["original_url"] = clean(cover.get("url"))
+            cover["url"] = cover_url
+            cover["alt"] = build_vietnamese_alt_text(cover, article)
+            cover["source_name"] = clean(cover.get("provider") or cover.get("source_name") or "Kho ảnh mở")
+            cover["asset_storage"] = "external_source"
+            cover["processed_format"] = "original"
 
             payload = {
                 "title": title,
                 "excerpt": clean(post.get("excerpt")),
-                "coverImage": clean(cover.get("url")),
+                "coverImage": cover_url,
                 "coverAlt": clean(cover.get("alt") or title)[:300],
                 "coverCredit": _cover_credit(cover),
                 "country": clean(post.get("country_name")),
@@ -665,12 +675,8 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
                 "seoDescription": clean(post.get("seo_description") or post.get("excerpt")),
                 "status": "published",
             }
-            if (
-                not payload["coverImage"].startswith("https://")
-                or cover.get("asset_storage") != "vercel_blob"
-                or cover.get("processed_format") != "webp"
-            ):
-                raise ValueError("Ảnh bù phải là WebP đã lưu trong Vercel Blob.")
+            if not payload["coverImage"].startswith("https://"):
+                raise ValueError("Ảnh bù phải dùng URL HTTPS.")
 
             update_response = requests.post(
                 _endpoint(), headers=_headers(), json=payload,
@@ -686,14 +692,13 @@ def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) ->
                 "status": "updated",
                 "image_scope": cover.get("image_scope"),
                 "provider": cover.get("provider") or cover.get("source_name"),
-                "filename": cover.get("optimized_filename"),
-                "size_bytes": cover.get("file_size_bytes"),
+                "image_url": cover_url,
+                "storage": "external_source",
             })
             log.info(
-                "Đã bổ sung ảnh WebP cho bài cũ: title=%s scope=%s size=%sKB",
+                "Đã bổ sung ảnh ngoài bằng URL trực tiếp: title=%s provider=%s",
                 title[:120],
-                cover.get("image_scope"),
-                round(float(cover.get("file_size_bytes") or 0) / 1024, 1),
+                cover.get("source_name"),
             )
         except Exception as exc:
             result["failed"] += 1
