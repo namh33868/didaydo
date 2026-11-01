@@ -243,16 +243,16 @@ export async function GET(request: Request) {
     }
 
     const posts = after
-      ? await db<{ id: string; content_html: string }[]>\`
+      ? await db<{ id: string; content_html: string }[]>`
           SELECT id, content_html FROM posts
           WHERE id > ${after}::uuid AND content_html ILIKE '%<figcaption%'
           ORDER BY id ASC LIMIT ${limit}
-        \`
-      : await db<{ id: string; content_html: string }[]>\`
+        `
+      : await db<{ id: string; content_html: string }[]>`
           SELECT id, content_html FROM posts
           WHERE content_html ILIKE '%<figcaption%'
           ORDER BY id ASC LIMIT ${limit}
-        \`;
+        `;
 
     let updated = 0;
     let captionsRemoved = 0;
@@ -260,13 +260,13 @@ export async function GET(request: Request) {
       const original = post.content_html || "";
       const cleaned = stripPublicImageAttribution(original);
       if (cleaned === original) continue;
-      const beforeCount = (original.match(/<figcaption\\b/gi) || []).length;
-      const afterCount = (cleaned.match(/<figcaption\\b/gi) || []).length;
+      const beforeCount = (original.match(/<figcaption\b/gi) || []).length;
+      const afterCount = (cleaned.match(/<figcaption\b/gi) || []).length;
       captionsRemoved += Math.max(0, beforeCount - afterCount);
-      await db\`
+      await db`
         UPDATE posts SET content_html = ${cleaned}, updated_at = NOW()
         WHERE id = ${post.id}::uuid
-      \`;
+      `;
       updated += 1;
     }
 
