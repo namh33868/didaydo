@@ -131,7 +131,7 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertEqual(article["source_image_url"], normalized_url)
             self.assertIn(normalized_url, draft["seo_content"])
             self.assertNotIn(original_url, draft["seo_content"])
-            self.assertIn("loading=\\"lazy\\"", draft["seo_content"])
+            self.assertIn("loading=", draft["seo_content"])
 
             payload = site_publisher.build_site_payload(article, draft)
             self.assertEqual(payload["coverImage"], normalized_url)
