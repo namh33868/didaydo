@@ -355,8 +355,9 @@ def _crop_or_inpaint_logo_marks(source_bytes: bytes, marks: list[dict]) -> tuple
             actions.append(direction)
             continue
 
-        # Inpainting is deliberately limited to small marks. Large or central
-        # translucent watermarks are not reliably reconstructable without damage.
+        # Inpainting is limited to small marks. Large or central translucent
+        # watermarks are not reliably reconstructable without visible damage;
+        # those candidates must remain unpublished rather than be aggressively erased.
         if (
             box_width > width * 0.12
             or box_height > height * 0.12
