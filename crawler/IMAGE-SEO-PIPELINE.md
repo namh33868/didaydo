@@ -1,41 +1,39 @@
 # Image SEO pipeline
 
-## What the crawler does
+## Ảnh dùng cho bài viết mới
 
-1. **Rights first:** a cover is only considered after image-specific license metadata, creator, source page, and relevance checks. The automatic allow-list is limited to Public Domain, CC0, and CC BY. CC BY-SA, NC, and ND are rejected because the site's publication model does not currently apply a ShareAlike license to derivatives.
-2. **Download and self-host:** the crawler downloads the selected image over HTTPS, verifies that it is a supported raster image, converts it locally, and sends the processed WebP to the authenticated Didaydo API. The API stores the file in the public Vercel Blob store. Published posts use the Blob URL, not the source website's hotlink.
-3. **SEO metadata:** the filename is lowercase, unaccented, hyphen-separated, and based on the article subject. Vietnamese alt text is saved to the post's `cover_alt`; attribution and license links are saved to `cover_credit`.
-4. **Compression:** cover assets target 100 KB and are resized up to 1200 px wide. The batch utility defaults to 800 px for normal in-article images. The optimizer reports when the target cannot be met without further quality loss.
+1. **Dùng ảnh ngay trong bài nguồn:** crawler lấy ảnh được nhúng trong phần thân bài gốc theo đúng thứ tự và vị trí. Ảnh đại diện Open Graph/RSS chỉ là phương án dự phòng khi trang không có ảnh trong thân bài; không chạy tìm ảnh stock thay thế khi không có ảnh phù hợp.
+2. **Tải và kiểm tra:** tải ảnh qua HTTPS từ máy chủ công khai, kiểm tra định dạng/kích thước và gửi ảnh xem trước cho Gemini Vision để nhận diện vị trí logo hoặc watermark.
+3. **Xử lý dấu trên ảnh:** nếu logo sát mép và có thể cắt mà vẫn giữ ảnh đủ lớn, crawler crop phần mép đó. Nếu logo nhỏ nằm bên trong ảnh, crawler thử inpainting cục bộ. Mỗi ảnh sau xử lý đều được Gemini Vision kiểm tra lại. Logo lớn, watermark phủ rộng, vị trí không rõ hoặc ảnh sau xử lý vẫn còn dấu sẽ bị loại; crawler không đăng ảnh chưa đạt.
+4. **Tối ưu và tự lưu trữ:** ảnh đạt yêu cầu được chuẩn hóa hướng, chuyển sang WebP, đặt tên file SEO, tạo alt tiếng Việt và tải lên Vercel Blob qua API nội bộ. Bài đăng dùng URL Blob, không hotlink URL ảnh từ trang nguồn.
+5. **Nội dung ảnh:** URL ảnh trong thân bài được thay bằng URL WebP đã lưu trữ. Ảnh bị loại khỏi bộ HTML để tránh làm lộ lại URL ảnh chưa xử lý.
 
-The cover pipeline preserves the original source URL, creator, license, source page, and license URL in crawler metadata. It records the new Blob URL, dimensions, WebP format, and final byte size as well.
+Quyền tái sử dụng ảnh nguồn được bật trong workflow theo xác nhận của người vận hành (SOURCE_IMAGE_REUSE_AUTHORIZED=true). Việc chỉnh kích thước/đổi URL không tự tạo ra quyền sử dụng; cấu hình này chỉ nên giữ khi quyền từ các nguồn đã được người vận hành giải quyết.
 
-## Upload architecture and one-time setup
+## Giới hạn xử lý logo/watermark
 
-- GitHub Actions does **not** need `BLOB_READ_WRITE_TOKEN`.
-- The crawler sends each optimized WebP to `POST /api/internal/images` using the existing `SITE_INGEST_API_KEY`.
-- The Next.js route verifies that key, checks the WebP signature and file size, then uploads to `images/covers/` using `@vercel/blob`.
-- On Vercel, the Blob SDK obtains the platform-managed OIDC credential automatically when the Blob store is connected with OIDC. No OIDC token is copied into GitHub or browser code.
+- Crop chỉ được thử khi dấu nằm sát mép và phần cắt không vượt quá 14% kích thước cạnh, đồng thời ảnh còn lại tối thiểu 300×200 px.
+- Inpainting chỉ được dùng cho dấu nhỏ (tối đa 12% chiều rộng, 12% chiều cao và 1,8% diện tích ảnh). Dấu lớn hoặc watermark trải rộng sẽ bị loại để tránh phá hỏng nội dung hình.
+- AI phải trả bounding box hợp lệ và ảnh sau xử lý phải vượt qua lần kiểm tra cuối với độ tin cậy cao. Khi Gemini/OpenCV lỗi hoặc kết quả không rõ, ảnh bị loại theo hướng an toàn.
+- OpenCV headless được cài từ crawler/requirements.txt; không cần GUI.
 
-Create a **Public** Blob store in Vercel because article images must be readable by website visitors. Connect the store to the Didaydo project. For an existing store, after deploying the current `@vercel/blob` SDK, open **Storage → the Blob store → Projects**, open the project's context menu, and choose **Upgrade to OIDC** if that action is available. New OIDC connections may already be enabled; the workflow's Blob API preflight verifies real access.
+## Upload architecture
 
-The only GitHub secrets required for this image upload path are the existing `SITE_URL` and `SITE_INGEST_API_KEY`. Keep the ingest key private and do not commit it to the repository.
+- GitHub Actions does not need BLOB_READ_WRITE_TOKEN.
+- The crawler sends each optimized WebP to POST /api/internal/images using SITE_INGEST_API_KEY.
+- The Next.js route verifies that key, checks the WebP signature and file size, then uploads to images/covers/ using @vercel/blob.
+- Vercel obtains the platform-managed OIDC credential when the Blob store is connected with OIDC. No OIDC token is copied into GitHub or browser code.
 
-## Batch tool for a local image folder
+Create a Public Blob store in Vercel because article images must be readable by website visitors. Connect the store to the Didaydo project. The workflow's Blob API preflight verifies real access.
 
-Run from the `crawler` folder:
+The only GitHub secrets required for this image upload path are SITE_URL and SITE_INGEST_API_KEY. Keep the ingest key private and do not commit it to the repository.
+
+## Batch tool for local images
+
+Run from the crawler folder:
 
 ```bash
 python batch_optimize_images.py ./input-images ./optimized-images --max-width 800 --max-bytes 102400
 ```
 
-The tool creates SEO-friendly WebP files and an `image-manifest.json` with output names, alt text, dimensions, and byte sizes. It does not overwrite source files and does not upload the output folder.
-
-For cover images, use a wider output (the automatic crawler uses 1200 px):
-
-```bash
-python batch_optimize_images.py ./input-images ./optimized-covers --max-width 1200 --max-bytes 102400
-```
-
-## Watermark policy
-
-The crawler does **not** remove third-party watermarks or logos. It rejects metadata that explicitly indicates a watermarked preview, and visible watermarks must be reviewed and replaced with a clean, rights-cleared original. A license does not automatically grant permission to remove ownership marks or imply that the site owns the image. The pipeline also does not add a DiDayDo watermark to third-party images; any branding overlay needs a separate rights and design decision.
+The tool creates SEO-friendly WebP files and an image-manifest.json. It does not overwrite source files or upload the output folder.
