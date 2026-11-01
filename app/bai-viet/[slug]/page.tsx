@@ -44,7 +44,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 function makeArticleBody(html: string) {
   const toc: { title: string; id: string; level: number }[] = [];
   const counts = new Map<string, number>();
-  const content = html.replace(/<(h2|h3)([^>]*)>([\s\S]*?)<\/\1>/gi, (full, tag: string, attrs: string, inner: string) => {
+  // Hide image credits, providers and license notes in new and legacy posts.
+  // Descriptive captions such as place or scene names remain visible.
+  const withoutImageAttribution = html.replace(/<figcaption\\b[^>]*>[\\s\\S]*?<\\/figcaption>/gi, (caption) => {
+    const text = caption.replace(/<[^>]*>/g, " ").toLocaleLowerCase("vi");
+    const privateImageMarkers = [
+      "nguồn ảnh", "giấy phép", "ảnh:", "photo by", "image credit",
+      "credit:", "courtesy of",
+    ];
+    return privateImageMarkers.some((item) => text.includes(item)) ? "" : caption;
+  });
+  const content = withoutImageAttribution.replace(/<(h2|h3)([^>]*)>([\s\S]*?)<\/\1>/gi, (full, tag: string, attrs: string, inner: string) => {
     const title = inner.replace(/<[^>]*>/g, "").trim();
     let id = slugify(title);
     const count = counts.get(id) || 0;
