@@ -306,7 +306,8 @@ def _crop_or_inpaint_logo_marks(source_bytes: bytes, marks: list[dict]) -> tuple
         raise ImageProcessingError("AI phát hiện logo nhưng không trả được vùng tọa độ hợp lệ.")
 
     actions: list[str] = []
-    for original_box in boxes:
+    for box_index in range(len(boxes)):
+        original_box = boxes[box_index]
         width, height = image.size
         x1, y1, x2, y2 = original_box
         if x1 >= width or y1 >= height or x2 <= 0 or y2 <= 0:
