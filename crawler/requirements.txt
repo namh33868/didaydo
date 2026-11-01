@@ -5,4 +5,3 @@ openai>=1.66,<3
 google-genai>=1.0,<2
 lxml>=5.3,<7
 Pillow>=12.0,<14
-vercel-blob>=0.5.0,<0.6
