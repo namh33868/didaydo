@@ -206,10 +206,12 @@ class ArticleImageRelevanceTests(unittest.TestCase):
 
     def test_only_commercial_friendly_licenses_are_allowed(self):
         self.assertTrue(is_license_allowed("CC BY 4.0"))
-        self.assertTrue(is_license_allowed("CC BY-SA 4.0"))
+        self.assertFalse(is_license_allowed("CC BY-SA 4.0"))
         self.assertTrue(is_license_allowed("CC0"))
         self.assertFalse(is_license_allowed("CC BY-NC 4.0"))
         self.assertFalse(is_license_allowed("CC BY-ND 4.0"))
+        self.assertFalse(is_license_allowed("CC BY-NC 4.0"))
+
 
 
 if __name__ == "__main__":

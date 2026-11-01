@@ -242,19 +242,36 @@ def _cover_credit(image: dict) -> str:
         parts.append("Nguồn ảnh: " + source_page)
     if license_url:
         parts.append("Giấy phép: " + license_url)
+    if image.get("asset_storage") == "vercel_blob" and image.get("processed_format") == "webp":
+        dimensions = f'{image.get("width", "")}×{image.get("height", "")}'.strip("×")
+        size_kb = round(float(image.get("file_size_bytes") or 0) / 1024, 1)
+        parts.append(f"Đã xử lý WebP{f' {dimensions}' if dimensions else ''}, {size_kb} KB")
     return " · ".join(parts)[:1200]
 
 
 def _ensure_editorial_cover_image(article: dict, db_path: str, draft: dict | None = None) -> dict | None:
-    """Recheck cached relevance and search using the source photo, caption and article text."""
+    """Find, rights-check, download, optimize, and self-host a licensed WebP cover."""
     from image_finder import find_cover_image, is_license_allowed, verify_image_url
+    from image_optimizer import (
+        BlobUploadError,
+        ImageProcessingError,
+        process_and_upload_cover_image,
+    )
 
     search_article = dict(article)
     if isinstance(draft, dict):
-        search_article["visual_search_title"] = clean(draft.get("seo_title") or draft.get("title") or article.get("source_title"))
-        search_article["visual_search_summary"] = clean(draft.get("seo_description") or draft.get("meta_description") or article.get("source_summary"))
-        body_text = BeautifulSoup(str(draft.get("seo_content") or ""), "html.parser").get_text(" ", strip=True)
+        search_article["visual_search_title"] = clean(
+            draft.get("seo_title") or draft.get("title") or article.get("source_title")
+        )
+        search_article["seo_title"] = search_article["visual_search_title"]
+        search_article["visual_search_summary"] = clean(
+            draft.get("seo_description") or draft.get("meta_description") or article.get("source_summary")
+        )
+        body_text = BeautifulSoup(
+            str(draft.get("seo_content") or ""), "html.parser"
+        ).get_text(" ", strip=True)
         search_article["visual_search_body"] = clean(body_text)[:3500]
+
     source_url = normalize_source_url(article.get("source_url", ""))
     stored_images = _stored_image_list(article)
     if source_url:
@@ -274,11 +291,16 @@ def _ensure_editorial_cover_image(article: dict, db_path: str, draft: dict | Non
     existing = article.get("editorial_cover_image")
     if not isinstance(existing, dict):
         existing = next(
-            (item for item in stored_images
-             if item.get("is_cover") is True and item.get("rights_status") == "license_metadata_checked"),
+            (
+                item for item in stored_images
+                if item.get("is_cover") is True
+                and item.get("rights_status") == "license_metadata_checked"
+            ),
             None,
         )
 
+    selected = None
+    first_candidate = None
     if isinstance(existing, dict):
         valid = (
             clean(existing.get("url")).startswith("https://")
@@ -291,38 +313,88 @@ def _ensure_editorial_cover_image(article: dict, db_path: str, draft: dict | Non
             and verify_image_url(existing.get("url", ""))
         )
         if valid:
-            selected = dict(existing)
+            first_candidate = dict(existing)
         else:
-            selected = None
-            log.warning("Ảnh đại diện đã lưu không còn hợp lệ; sẽ tìm ảnh khác cho %s", article.get("source_url"))
-    else:
-        selected = None
+            log.warning(
+                "Ảnh đại diện đã lưu không còn hợp lệ; sẽ tìm ảnh khác cho %s",
+                article.get("source_url"),
+            )
 
-    if selected is None:
-        used_urls = set()
+    used_urls = set()
+    try:
+        with sqlite3.connect(db_path, timeout=30) as conn:
+            rows = conn.execute(
+                "SELECT source_images_json FROM articles WHERE source_url<>? "
+                "AND COALESCE(source_images_json, '')<>''",
+                (source_url,),
+            ).fetchall()
+        for (raw_images,) in rows:
+            try:
+                parsed_images = json.loads(raw_images or "[]")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(parsed_images, list):
+                for item in parsed_images:
+                    if not isinstance(item, dict):
+                        continue
+                    for key in ("url", "original_url"):
+                        value = clean(item.get(key))
+                        if value.startswith("https://"):
+                            used_urls.add(value)
+    except sqlite3.Error as exc:
+        log.warning(
+            "Không đọc được lịch sử ảnh đã dùng (%s); tiếp tục tìm ảnh mới",
+            type(exc).__name__,
+        )
+
+    candidates = [first_candidate] if first_candidate else []
+    last_processing_error = None
+
+    for attempt in range(4):
+        candidate = candidates.pop(0) if candidates else None
+        if candidate is None:
+            candidate = find_cover_image(search_article, exclude_urls=used_urls)
+        if not candidate:
+            break
+
+        # Already processed images are reused; external image URLs must pass the
+        # full download → WebP → Blob pipeline before they can be published.
+        if (
+            candidate.get("asset_storage") == "vercel_blob"
+            and candidate.get("processed_format") == "webp"
+            and clean(candidate.get("url")).startswith("https://")
+            and verify_image_url(candidate.get("url", ""))
+        ):
+            selected = dict(candidate)
+            break
+
+        original_url = clean(candidate.get("original_url") or candidate.get("url"))
         try:
-            with sqlite3.connect(db_path, timeout=30) as conn:
-                rows = conn.execute(
-                    "SELECT source_images_json FROM articles WHERE source_url<>? AND COALESCE(source_images_json, '')<>''",
-                    (source_url,),
-                ).fetchall()
-            for (raw_images,) in rows:
-                try:
-                    parsed_images = json.loads(raw_images or "[]")
-                except (TypeError, json.JSONDecodeError):
-                    continue
-                if isinstance(parsed_images, list):
-                    used_urls.update(clean(item.get("url")) for item in parsed_images
-                                     if isinstance(item, dict) and clean(item.get("url")).startswith("https://"))
-        except sqlite3.Error as exc:
-            log.warning("Không đọc được lịch sử ảnh đã dùng (%s); tiếp tục tìm ảnh mới", type(exc).__name__)
-        selected = find_cover_image(search_article, exclude_urls=used_urls)
+            selected = process_and_upload_cover_image(candidate, search_article)
+            break
+        except ImageProcessingError as exc:
+            last_processing_error = exc
+            if original_url:
+                used_urls.add(original_url)
+            log.warning(
+                "Loại ứng viên ảnh không tải/chuyển đổi được; thử ảnh khác (%s).",
+                type(exc).__name__,
+            )
+            selected = None
+            continue
+        except BlobUploadError:
+            # Storage/auth failures are infrastructure errors, not image-search
+            # misses. Stop immediately so the crawl does not waste more AI quota.
+            raise
+
     if not selected:
+        if last_processing_error:
+            log.warning("Không có ảnh bìa đạt điều kiện sau khi thử các nguồn (%s).",
+                        type(last_processing_error).__name__)
         return None
 
     article["editorial_cover_image"] = selected
-    images = stored_images
-    images = [item for item in images if item.get("image_id") != "COVER_LIBRARY"]
+    images = [item for item in stored_images if item.get("image_id") != "COVER_LIBRARY"]
     images.append(selected)
     serialized = json.dumps(images, ensure_ascii=False)
     article["source_images"] = images
@@ -336,7 +408,6 @@ def _ensure_editorial_cover_image(article: dict, db_path: str, draft: dict | Non
             )
             conn.commit()
     return selected
-
 
 def backfill_missing_cover_images(db_path: str | None = None, limit: int = 5) -> dict:
     """Add licensed cover images to older published crawler posts that lack one."""
@@ -478,6 +549,11 @@ def build_site_payload(article: dict, draft: dict) -> dict:
             or not clean(editorial_cover.get("url")).startswith("https://")
         ):
             raise ValueError("Ảnh đại diện không đạt kiểm tra giấy phép hoặc URL.")
+        if (
+            editorial_cover.get("asset_storage") != "vercel_blob"
+            or editorial_cover.get("processed_format") != "webp"
+        ):
+            raise ValueError("Ảnh bìa phải được tải về, chuyển WebP và lưu trong Vercel Blob trước khi xuất bản.")
         cover_image = clean(editorial_cover.get("url"))
         cover_alt = clean(editorial_cover.get("alt") or title)[:300]
         cover_credit = _cover_credit(editorial_cover)

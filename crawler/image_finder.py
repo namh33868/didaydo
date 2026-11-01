@@ -80,14 +80,20 @@ def is_license_allowed(license_name: str) -> bool:
         return False
     if re.search(r"\b(nc|nd|non ?commercial|no derivatives|noderivatives)\b", value):
         return False
+    if re.search(r"\bcc by sa\b", value):
+        # ShareAlike derivatives must be distributed under compatible terms.
+        # The publication workflow is not currently licensed that way.
+        return False
     if "public domain" in value or "public domain mark" in value or "cc0" in value or value == "pdm":
         return True
-    return bool(re.search(r"\bcc by(?: sa)?\b", value))
+    return bool(re.search(r"\bcc by\b", value))
 
 
 def _license_allowed_code(code: str) -> bool:
     value = _normalise(code)
-    return value in {"cc0", "pdm", "by", "by sa"}
+    # CC BY-SA is excluded until the site's derivative assets can be distributed
+    # under compatible ShareAlike terms.
+    return value in {"cc0", "pdm", "by"}
 
 
 def _destination_terms(article: dict) -> list[str]:

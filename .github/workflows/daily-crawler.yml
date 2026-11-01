@@ -31,6 +31,7 @@ jobs:
       SITE_API_TIMEOUT_SECONDS: "30"
       IMAGE_RECHECK_PER_RUN: "2"
       SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
       SOURCE_CONTEXT_MODE: "smart"
       SOURCE_IMAGE_REUSE_AUTHORIZED: "false"
       ALLOW_FULL_TEXT_STORAGE: "false"
@@ -77,10 +78,26 @@ jobs:
             echo "Missing GitHub Actions secret SITE_INGEST_API_KEY."
             exit 1
           fi
+          if [ -z "$BLOB_READ_WRITE_TOKEN" ]; then
+            echo "Missing GitHub Actions secret BLOB_READ_WRITE_TOKEN. Create a public Vercel Blob store and add its read/write token."
+            exit 1
+          fi
           if [ -z "${GEMINI_API_KEY}${OPENAI_API_KEY}${GROQ_API_KEY}${OPENROUTER_API_KEY}" ]; then
             echo "Set at least one AI provider secret: GEMINI_API_KEY, OPENAI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY."
             exit 1
           fi
+
+      - name: Verify Vercel Blob image storage
+        run: |
+          python - <<'PY'
+          from vercel.blob.sync import query_blobs
+
+          try:
+              next(iter(query_blobs(prefix="images/covers/", page_size=1)), None)
+          except Exception as exc:
+              raise SystemExit(f"Vercel Blob preflight failed: {type(exc).__name__}")
+          print("Vercel Blob image storage OK.")
+          PY
 
       - name: Verify the Vercel ingest API can auto-publish
         run: |
@@ -109,7 +126,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m py_compile main.py site_publisher.py image_finder.py sync_to_site.py daily_runner.py send_daily_report.py
+          python -m py_compile main.py site_publisher.py image_finder.py image_optimizer.py batch_optimize_images.py sync_to_site.py daily_runner.py send_daily_report.py
           python -m unittest discover -s tests -p "test_*.py" -v
           python -c "from bs4 import BeautifulSoup; root=BeautifulSoup('<rss><channel><item><title>parser-check</title></item></channel></rss>', 'xml'); assert root.find('item') and root.find('title').text == 'parser-check'; print('XML RSS parser OK')"
           python - <<'PY'
