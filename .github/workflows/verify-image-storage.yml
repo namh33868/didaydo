@@ -1,4 +1,5 @@
 name: Verify Didaydo image upload
+# Run this when an end-to-end Blob write check is needed.
 
 on:
   workflow_dispatch:
