@@ -89,7 +89,11 @@ def main():
     site_publisher._check_api_ready()
 
     image_backfill_limit = _env_int("IMAGE_BACKFILL_PER_RUN", 5, minimum=1, maximum=25)
-    image_backfill = site_publisher.backfill_missing_cover_images(db_path, limit=image_backfill_limit)
+    image_backfill = site_publisher.backfill_missing_cover_images(
+        db_path,
+        limit=image_backfill_limit,
+        article_extractor=bot.extract_article_metadata,
+    )
     log.info(
         "Bù ảnh bài thiếu: đã kiểm tra %(checked)s, cập nhật %(updated)s, chưa tìm được %(unmatched)s, lỗi %(failed)s.",
         image_backfill,
