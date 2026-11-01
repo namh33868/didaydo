@@ -3,7 +3,8 @@ name: Daily travel crawler
 on:
   schedule:
     # 10:00 Vietnam time (UTC+7) every day.
-    - cron: "0 3 * * *"
+    - cron: "15 10 * * *"
+      timezone: "Asia/Ho_Chi_Minh"
   workflow_dispatch:
 
 permissions:
