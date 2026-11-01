@@ -204,11 +204,11 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
 }
 
 function stripPublicImageAttribution(html: string): string {
-  return html.replace(/<figcaption\\b[^>]*>[\\s\\S]*?<\\/figcaption>/gi, (caption) => {
+  return html.replace(/<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi, (caption) => {
     const visibleText = caption
       .replace(/<[^>]*>/g, " ")
       .replace(/&nbsp;|&#160;|&#xA0;/gi, " ")
-      .replace(/\\s+/g, " ")
+      .replace(/\s+/g, " ")
       .toLocaleLowerCase("vi");
     const privateMarkers = [
       "nguồn ảnh",
@@ -221,7 +221,7 @@ function stripPublicImageAttribution(html: string): string {
       "courtesy of",
       "tác giả ảnh",
     ];
-    const hasPrivateImageUrl = /https?:\\/\\//i.test(caption);
+    const hasPrivateImageUrl = /https?:\/\//i.test(caption);
     return hasPrivateImageUrl || privateMarkers.some((marker) => visibleText.includes(marker))
       ? ""
       : caption;
