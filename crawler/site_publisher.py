@@ -510,8 +510,8 @@ def _ensure_source_article_images(
                 image_tag.attrs.pop("srcset", None)
                 image_tag.attrs.pop("sizes", None)
             elif original in source_urls:
-                image_tag.decompose()
                 parent = image_tag.parent
+                image_tag.decompose()
                 if parent and parent.name == "figure" and not parent.find("img"):
                     parent.decompose()
         draft["seo_content"] = "".join(str(child) for child in soup.contents)
