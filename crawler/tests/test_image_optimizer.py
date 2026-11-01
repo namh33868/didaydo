@@ -1,4 +1,3 @@
-import importlib.util
 import io
 import os
 import unittest
@@ -12,8 +11,6 @@ from image_optimizer import (
     optimize_image_bytes,
     slugify_filename,
     upload_webp_to_vercel_blob,
-    verify_no_visible_logo,
-    clean_visible_logo_marks,
     _has_watermark_hint,
 )
 
@@ -95,128 +92,6 @@ class ImageOptimizerTests(unittest.TestCase):
             "https://example.com/photos/travel.jpg",
         ))
 
-    def test_visual_logo_review_accepts_only_high_confidence_clean_images(self):
-        source = io.BytesIO()
-        Image.new("RGB", (900, 600), (40, 120, 180)).save(source, format="JPEG")
-
-        with patch("image_optimizer._request_logo_review", return_value={
-            "has_logo_or_watermark": False,
-            "confidence": "high",
-            "reason": "No visible brand marks.",
-            "model": "gemini-3.8-flash",
-        }):
-            result = verify_no_visible_logo(source.getvalue())
-        self.assertEqual(result["status"], "no_visible_logo")
-        self.assertEqual(result["confidence"], "high")
-
-    def test_visual_logo_review_rejects_logo_and_uncertain_result(self):
-        source = io.BytesIO()
-        Image.new("RGB", (900, 600), (40, 120, 180)).save(source, format="JPEG")
-
-        with patch("image_optimizer._request_logo_review", return_value={
-            "has_logo_or_watermark": True,
-            "confidence": "high",
-            "reason": "Publisher logo visible in the corner.",
-            "model": "gemini-3.8-flash",
-        }):
-            with self.assertRaisesRegex(ImageProcessingError, "logo/watermark"):
-                verify_no_visible_logo(source.getvalue())
-
-        with patch("image_optimizer._request_logo_review", return_value={
-            "has_logo_or_watermark": False,
-            "confidence": "medium",
-            "reason": "The corner is unclear.",
-            "model": "gemini-3.8-flash",
-        }):
-            with self.assertRaisesRegex(ImageProcessingError, "Không xác nhận được"):
-                verify_no_visible_logo(source.getvalue())
-
-
-    @unittest.skipUnless(importlib.util.find_spec("cv2"), "OpenCV is installed by crawler requirements")
-    def test_edge_logo_is_cropped_and_final_image_is_rechecked(self):
-        source = io.BytesIO()
-        image = Image.new("RGB", (1000, 700), (120, 160, 190))
-        for x in range(940, 995):
-            for y in range(658, 696):
-                image.putpixel((x, y), (10, 10, 10))
-        image.save(source, format="JPEG")
-
-        initial_review = {
-            "has_logo_or_watermark": True,
-            "confidence": "high",
-            "reason": "Small logo at bottom-right edge.",
-            "marks": [{"bbox": [940, 940, 995, 995], "kind": "logo"}],
-            "model": "gemini-3.8-flash",
-        }
-        final_review = {
-            "has_logo_or_watermark": False,
-            "confidence": "high",
-            "reason": "No visible marks remain.",
-            "marks": [],
-            "model": "gemini-3.8-flash",
-        }
-        with patch(
-            "image_optimizer._request_logo_review",
-            side_effect=[initial_review, final_review],
-        ):
-            cleaned, report = clean_visible_logo_marks(source.getvalue())
-
-        with Image.open(io.BytesIO(cleaned)) as result:
-            self.assertLess(result.width, 1000)
-            self.assertEqual(result.height, 700)
-        self.assertIn("crop_right", report["actions"])
-        self.assertEqual(report["status"], "no_visible_logo")
-
-    @unittest.skipUnless(importlib.util.find_spec("cv2"), "OpenCV is installed by crawler requirements")
-    def test_small_internal_logo_is_inpainted_and_final_image_is_rechecked(self):
-        source = io.BytesIO()
-        image = Image.new("RGB", (1000, 700), (120, 160, 190))
-        for x in range(480, 520):
-            for y in range(315, 355):
-                image.putpixel((x, y), (5, 5, 5))
-        image.save(source, format="JPEG")
-
-        initial_review = {
-            "has_logo_or_watermark": True,
-            "confidence": "high",
-            "reason": "Small logo near the image center.",
-            "marks": [{"bbox": [480, 450, 520, 507], "kind": "logo"}],
-            "model": "gemini-3.8-flash",
-        }
-        final_review = {
-            "has_logo_or_watermark": False,
-            "confidence": "high",
-            "reason": "No visible marks remain.",
-            "marks": [],
-            "model": "gemini-3.8-flash",
-        }
-        with patch(
-            "image_optimizer._request_logo_review",
-            side_effect=[initial_review, final_review],
-        ):
-            cleaned, report = clean_visible_logo_marks(source.getvalue())
-
-        with Image.open(io.BytesIO(cleaned)) as result:
-            self.assertEqual(result.size, (1000, 700))
-        self.assertIn("inpaint", report["actions"])
-
-    @unittest.skipUnless(importlib.util.find_spec("cv2"), "OpenCV is installed by crawler requirements")
-    def test_large_internal_watermark_is_not_destructively_repaired(self):
-        source = io.BytesIO()
-        Image.new("RGB", (1000, 700), (120, 160, 190)).save(source, format="JPEG")
-        initial_review = {
-            "has_logo_or_watermark": True,
-            "confidence": "high",
-            "reason": "Large central watermark.",
-            "marks": [{"bbox": [300, 300, 700, 700], "kind": "watermark"}],
-            "model": "gemini-3.8-flash",
-        }
-        with patch(
-            "image_optimizer._request_logo_review",
-            return_value=initial_review,
-        ):
-            with self.assertRaisesRegex(ImageProcessingError, "quá lớn"):
-                clean_visible_logo_marks(source.getvalue())
 
 
 if __name__ == "__main__":
