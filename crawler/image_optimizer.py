@@ -296,34 +296,55 @@ def optimize_image_bytes(
 
 
 def upload_webp_to_vercel_blob(data: bytes, filename: str) -> dict:
-    """Upload an already optimized WebP to a public Vercel Blob store."""
-    if not os.getenv("BLOB_READ_WRITE_TOKEN", "").strip():
-        raise BlobUploadError(
-            "Thiếu GitHub Actions secret BLOB_READ_WRITE_TOKEN cho Vercel Blob."
-        )
-    try:
-        from vercel.blob.sync import put_blob
-    except ImportError as exc:
-        raise BlobUploadError(
-            "Thiếu package vercel-blob; cài dependencies từ crawler/requirements.txt."
-        ) from exc
+    """Send an optimized WebP to the authenticated Didaydo API; Vercel uploads via OIDC."""
+    site_url = os.getenv("SITE_URL", os.getenv("NEXT_PUBLIC_SITE_URL", "")).strip().rstrip("/")
+    api_key = os.getenv("SITE_INGEST_API_KEY", "").strip()
+    if not site_url.startswith("https://"):
+        raise BlobUploadError("SITE_URL phải là địa chỉ HTTPS của website.")
+    if not api_key or len(api_key) < 24:
+        raise BlobUploadError("SITE_INGEST_API_KEY chưa được cấu hình hợp lệ.")
+    if len(data) > TARGET_MAX_BYTES * 5:
+        raise BlobUploadError("Ảnh WebP vượt giới hạn 500 KB của endpoint upload.")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,89}-[a-f0-9]{12}\.webp", filename):
+        raise BlobUploadError("Tên file WebP không đúng định dạng SEO đã chuẩn hóa.")
 
-    pathname = f"images/covers/{filename}"
     try:
-        uploaded = put_blob(
-            pathname,
-            data,
-            access="public",
-            content_type="image/webp",
-            add_random_suffix=False,
-            allow_overwrite=True,
-            cache_control_max_age=31_536_000,
+        timeout_seconds = max(5, min(int(os.getenv("SITE_API_TIMEOUT_SECONDS", "30")), 60))
+    except ValueError:
+        timeout_seconds = 30
+
+    endpoint = f"{site_url}/api/internal/images"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "image/webp",
+        "Accept": "application/json",
+        "X-Image-Filename": filename,
+        "User-Agent": "TravelContentBot/1.0",
+    }
+    try:
+        response = requests.post(
+            endpoint, headers=headers, data=data, timeout=(8, timeout_seconds)
         )
-    except Exception as exc:
+    except requests.RequestException as exc:
         raise BlobUploadError(
-            f"Không tải được ảnh lên Vercel Blob ({type(exc).__name__})."
+            f"Không kết nối được API lưu ảnh ({type(exc).__name__})."
         ) from None
-    return {"url": uploaded.url, "pathname": uploaded.pathname}
+
+    try:
+        result = response.json()
+    except ValueError:
+        raise BlobUploadError("API lưu ảnh không trả JSON hợp lệ.") from None
+
+    if not response.ok or not isinstance(result, dict) or result.get("ok") is not True:
+        raise BlobUploadError(
+            f"API lưu ảnh từ chối yêu cầu (HTTP {response.status_code})."
+        )
+    image_url = _plain(result.get("url"))
+    pathname = _plain(result.get("pathname"))
+    if not image_url.startswith("https://") or not pathname.startswith("images/covers/"):
+        raise BlobUploadError("API lưu ảnh trả về URL hoặc pathname không hợp lệ.")
+
+    return {"url": image_url, "pathname": pathname}
 
 
 def process_and_upload_cover_image(
