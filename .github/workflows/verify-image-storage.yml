@@ -10,8 +10,8 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      SITE_URL: \${{ secrets.SITE_URL }}
-      SITE_INGEST_API_KEY: \${{ secrets.SITE_INGEST_API_KEY }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+      SITE_INGEST_API_KEY: ${{ secrets.SITE_INGEST_API_KEY }}
 
     steps:
       - name: Check required secrets
