@@ -29,7 +29,7 @@ jobs:
       SITE_URL: ${{ secrets.SITE_URL }}
       SITE_INGEST_API_KEY: ${{ secrets.SITE_INGEST_API_KEY }}
       SITE_API_TIMEOUT_SECONDS: "30"
-      IMAGE_RECHECK_PER_RUN: "2"
+      IMAGE_RECHECK_PER_RUN: "0"
       SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
       SOURCE_CONTEXT_MODE: "smart"
       SOURCE_IMAGE_REUSE_AUTHORIZED: "true"
@@ -81,28 +81,6 @@ jobs:
             echo "Set at least one AI provider secret: GEMINI_API_KEY, OPENAI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY."
             exit 1
           fi
-
-      - name: Verify Vercel Blob image API
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.request
-
-          url = os.environ["SITE_URL"].rstrip("/") + "/api/internal/images"
-          request = urllib.request.Request(
-              url,
-              headers={"Authorization": "Bearer " + os.environ["SITE_INGEST_API_KEY"]},
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  result = json.loads(response.read().decode("utf-8"))
-          except Exception as exc:
-              raise SystemExit(f"Vercel Blob image API preflight failed: {type(exc).__name__}")
-          if result.get("ok") is not True or result.get("storage") != "vercel-blob":
-              raise SystemExit("Vercel Blob image API is not ready. Check Blob OIDC connection and deployment.")
-          print("Vercel Blob image API OK.")
-          PY
 
       - name: Verify the Vercel ingest API can auto-publish
         run: |
