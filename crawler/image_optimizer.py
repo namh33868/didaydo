@@ -1,11 +1,11 @@
 """Rights-first image processing for DiDayDo's crawler.
 
-This module downloads only HTTPS images from public hosts, rejects obvious preview /
-watermark hints in metadata, converts approved assets to WebP, creates SEO filenames,
-and uploads the processed files to a public Vercel Blob store.
+This module downloads only HTTPS images from public hosts, uses Gemini Vision to locate
+visible logos/watermarks, crops edge marks or inpaints small internal marks when safe,
+then verifies the edited image before WebP encoding and Vercel Blob upload.
 
-It intentionally does not remove visible watermarks. Images with visible marks must be
-replaced with a clean licensed original or reviewed manually.
+Large or ambiguous marks are rejected rather than damaging the photo or publishing an
+image that still contains a visible ownership mark.
 """
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ def build_vietnamese_alt_text(image_metadata: dict, article: dict) -> str:
 
 
 def _has_watermark_hint(metadata: dict, source_url: str) -> bool:
-    """Reject explicit preview/watermark hints; this does not inspect pixels or erase marks."""
+    """Return whether metadata suggests a mark; visual review decides whether to edit or reject."""
     text = " ".join(
         _plain(metadata.get(key))
         for key in ("title", "description", "caption", "alt", "tags_text", "provider", "creator")
