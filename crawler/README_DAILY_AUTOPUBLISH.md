@@ -46,6 +46,6 @@ Workflow đặt mục tiêu xuất bản tối đa 10 bài mới mỗi lần ch�
 
 - Bài mới sẽ được gửi với trạng thái `published` và chỉ được coi là thành công khi API website trả về `published`.
 - Bản nháp cũ trên website không tự động bị xuất bản hàng loạt; workflow chủ yếu xử lý bài mới.
-- Crawler dùng ảnh trong bài nguồn theo cấu hình quyền đã được người vận hành xác nhận (`SOURCE_IMAGE_REUSE_AUTHORIZED=true`). Ảnh được tải xuống, kiểm tra logo/watermark, crop ở mép hoặc inpainting dấu nhỏ nếu an toàn, kiểm tra lại, rồi chuyển WebP và tự lưu trên Vercel Blob.
-- Logo/watermark lớn hoặc khó xử lý sẽ khiến ảnh bị loại; crawler không đăng ảnh vẫn còn dấu rõ ràng hoặc bị xử lý hỏng.
+- Crawler ưu tiên URL ảnh gốc trong bài viết; nếu bài không có ảnh thì mới tìm ảnh ngoài có metadata giấy phép phù hợp. Ảnh được dùng trực tiếp qua HTTPS, chỉ chuẩn hóa URL/alt/credit/lazy-loading; không tải lại, không gọi AI Vision, không crop/inpaint, không chuyển WebP và không upload Blob trong luồng xuất bản thường ngày.
+- Quyền tái sử dụng ảnh nguồn được bật theo xác nhận của người vận hành (`SOURCE_IMAGE_REUSE_AUTHORIZED=true`). Giữ nguyên path và query của URL ảnh để tránh làm hỏng URL CDN hoặc URL ký số.
 - Tự động xuất bản không có bước duyệt biên tập thủ công, nên vẫn cần theo dõi nội dung, dữ kiện, bản quyền và log.
