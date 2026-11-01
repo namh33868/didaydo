@@ -454,6 +454,7 @@ def _ensure_source_article_images(
 
     # Fast path: keep the original source image URL. No image network request,
     # image decode, AI vision call, crop/inpaint, WebP encode, or Blob upload.
+    # Do not add image inspection here; it would reintroduce the per-photo bottleneck.
     source_images: list[dict] = []
     by_original_url: dict[str, dict] = {}
     raw_source_urls: set[str] = set()
