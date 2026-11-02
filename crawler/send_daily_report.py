@@ -19,6 +19,7 @@ STATUS_LABELS = {
     "warning": ("ĐÃ CHẠY - CÓ CẢNH BÁO", "#9a6700"),
     "below_minimum": ("CHƯA ĐẠT MỨC TỐI THIỂU", "#9a6700"),
     "quota_limited": ("DỪNG DO GIỚI HẠN AI", "#9a6700"),
+    "ai_provider_unavailable": ("DỪNG DO AI LỖI LIÊN TIẾP", "#9a6700"),
     "source_error": ("LỖI ĐỌC NGUỒN RSS", "#b42318"),
     "no_new_articles": ("KHÔNG CÓ BÀI MỚI ĐỂ XỬ LÝ", "#9a6700"),
     "no_relevant_articles": ("KHÔNG CÓ BÀI PHÙ HỢP DANH MỤC", "#9a6700"),
@@ -87,6 +88,10 @@ def _next_step(report: dict, job_status: str) -> str:
         return "Đã có bài xuất bản nhưng chưa đạt 3 bài tối thiểu. Kiểm tra lỗi AI, lỗi URL và nguồn RSS; các bài AI chưa hoàn chỉnh được giữ để thử lại."
     if status == "quota_limited":
         return "AI đã chạm quota hoặc rate limit. Crawler dừng gọi AI để tránh tiêu token tiếp; bài chưa hoàn chỉnh sẽ được thử lại ở lịch sau."
+    if status == "ai_provider_unavailable":
+        reason = str(report.get("ai_stop_reason") or "").strip()
+        detail = f" Chi tiết: {reason}" if reason else ""
+        return "Các provider AI đều thất bại ở nhiều URL liên tiếp nên crawler đã tự dừng; một bài lỗi đơn lẻ không còn làm dừng cả lượt chạy. Các URL chưa hoàn chỉnh sẽ được thử lại ở lịch sau." + detail
     if status == "source_error":
         return "Không đọc được các nguồn RSS. Kiểm tra parser XML, feed URL và các lỗi 403/503/SSL ở bảng nguồn lỗi."
     if status == "no_relevant_articles":
