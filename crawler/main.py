@@ -46,7 +46,9 @@ ALLOW_FULL_TEXT_STORAGE = os.getenv("ALLOW_FULL_TEXT_STORAGE", "false").strip().
 # Chỉ nhúng ảnh nguồn thật vào HTML đăng bài khi người vận hành xác nhận đã có quyền sử dụng.
 # Nếu false, ảnh vẫn được trích xuất/tham chiếu và đặt placeholder đúng vị trí trong bản nháp.
 SOURCE_IMAGE_REUSE_AUTHORIZED = os.getenv("SOURCE_IMAGE_REUSE_AUTHORIZED", "true").strip().lower() in {"1", "true", "yes"}
-MAX_SOURCE_BODY_CHARS = max(3000, min(int(os.getenv("MAX_SOURCE_BODY_CHARS", "22000")), 40000))
+# Keep source context compact enough for constrained fallback providers.
+# The original source is still available to the editor; only the AI request is bounded.
+MAX_SOURCE_BODY_CHARS = max(6000, min(int(os.getenv("MAX_SOURCE_BODY_CHARS", "12000")), 24000))
 # Smart context mode: fetch the accessible article text in memory so the writer has
 # enough facts, but do not persist the source's full text by default. Crucially, this
 # is passed to the writer in ONE AI call; no separate AI fact-extraction stage is needed.
@@ -90,11 +92,26 @@ try:
 except ValueError:
     GEMINI_RETRY_ATTEMPTS = 2
 
-# Output limit shared by providers. Free routed models may need more room for JSON.
+# Keep the JSON article response bounded. Groq gets a smaller provider-specific budget
+# because its on-demand TPM ceiling can reject large reserved completions.
 try:
-    AI_MAX_OUTPUT_TOKENS = max(2048, min(int(os.getenv("AI_MAX_OUTPUT_TOKENS", "7000")), 10000))
+    AI_MAX_OUTPUT_TOKENS = max(2048, min(int(os.getenv("AI_MAX_OUTPUT_TOKENS", "4500")), 8000))
 except ValueError:
-    AI_MAX_OUTPUT_TOKENS = 7000
+    AI_MAX_OUTPUT_TOKENS = 4500
+try:
+    GROQ_MAX_OUTPUT_TOKENS = max(
+        2048,
+        min(int(os.getenv("GROQ_MAX_OUTPUT_TOKENS", "3200")), AI_MAX_OUTPUT_TOKENS),
+    )
+except ValueError:
+    GROQ_MAX_OUTPUT_TOKENS = min(3200, AI_MAX_OUTPUT_TOKENS)
+
+try:
+    AI_MAX_CONSECUTIVE_FAILURES = max(
+        1, min(int(os.getenv("AI_MAX_CONSECUTIVE_FAILURES", "2")), 5)
+    )
+except ValueError:
+    AI_MAX_CONSECUTIVE_FAILURES = 2
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
