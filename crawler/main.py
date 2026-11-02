@@ -46,9 +46,12 @@ ALLOW_FULL_TEXT_STORAGE = os.getenv("ALLOW_FULL_TEXT_STORAGE", "false").strip().
 # Chỉ nhúng ảnh nguồn thật vào HTML đăng bài khi người vận hành xác nhận đã có quyền sử dụng.
 # Nếu false, ảnh vẫn được trích xuất/tham chiếu và đặt placeholder đúng vị trí trong bản nháp.
 SOURCE_IMAGE_REUSE_AUTHORIZED = os.getenv("SOURCE_IMAGE_REUSE_AUTHORIZED", "true").strip().lower() in {"1", "true", "yes"}
-# Keep source context compact enough for constrained fallback providers.
-# The source URL remains the reference; only context passed into the AI request is bounded.
-MAX_SOURCE_BODY_CHARS = max(6000, min(int(os.getenv("MAX_SOURCE_BODY_CHARS", "12000")), 24000))
+# Preserve full source context for Gemini/OpenAI/OpenRouter. The constrained Groq
+# on-demand route gets its own smaller request payload in _groq_request_input().
+MAX_SOURCE_BODY_CHARS = max(3000, min(int(os.getenv("MAX_SOURCE_BODY_CHARS", "22000")), 40000))
+GROQ_MAX_SOURCE_CONTEXT_CHARS = max(
+    2500, min(int(os.getenv("GROQ_MAX_SOURCE_CONTEXT_CHARS", "4000")), 6000)
+)
 # Smart context mode: fetch the accessible article text in memory so the writer has
 # enough facts, but do not persist the source's full text by default. Crucially, this
 # is passed to the writer in ONE AI call; no separate AI fact-extraction stage is needed.
@@ -92,19 +95,19 @@ try:
 except ValueError:
     GEMINI_RETRY_ATTEMPTS = 2
 
-# Keep the JSON article response bounded. Groq gets a smaller provider-specific budget
-# because its on-demand TPM ceiling can reject large reserved completions.
+# Give full-capacity providers enough room to return a complete editorial article.
+# Groq on-demand is separately bounded to fit its request-level TPM ceiling.
 try:
-    AI_MAX_OUTPUT_TOKENS = max(2048, min(int(os.getenv("AI_MAX_OUTPUT_TOKENS", "4500")), 8000))
+    AI_MAX_OUTPUT_TOKENS = max(3000, min(int(os.getenv("AI_MAX_OUTPUT_TOKENS", "9000")), 12000))
 except ValueError:
-    AI_MAX_OUTPUT_TOKENS = 4500
+    AI_MAX_OUTPUT_TOKENS = 9000
 try:
     GROQ_MAX_OUTPUT_TOKENS = max(
         2048,
-        min(int(os.getenv("GROQ_MAX_OUTPUT_TOKENS", "3200")), AI_MAX_OUTPUT_TOKENS),
+        min(int(os.getenv("GROQ_MAX_OUTPUT_TOKENS", "3000")), AI_MAX_OUTPUT_TOKENS),
     )
 except ValueError:
-    GROQ_MAX_OUTPUT_TOKENS = min(3200, AI_MAX_OUTPUT_TOKENS)
+    GROQ_MAX_OUTPUT_TOKENS = min(3000, AI_MAX_OUTPUT_TOKENS)
 
 try:
     AI_MAX_CONSECUTIVE_FAILURES = max(
@@ -155,10 +158,10 @@ if _MISPLACED_GROQ_KEY:
         "OPENAI_API_KEY có tiền tố gsk_; đây là định dạng key Groq. Đã tự chuyển key này sang provider Groq cho phiên chạy hiện tại; hãy chuyển key sang GROQ_API_KEY trong .env. Không có key nào được in ra log."
     )
 log.info(
-    "AI config loaded: dotenv=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
+    "AI config loaded: dotenv=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | Groq context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
     os.path.join(PROJECT_DIR, ".env"), GEMINI_TIMEOUT_MS / 1000.0,
     AI_PROVIDER_TIMEOUT_SECONDS, GEMINI_RETRY_ATTEMPTS, AI_MAX_OUTPUT_TOKENS, GROQ_MAX_OUTPUT_TOKENS,
-    MAX_SOURCE_BODY_CHARS, AI_MAX_CONSECUTIVE_FAILURES, bool(GROQ_API_KEY),
+    MAX_SOURCE_BODY_CHARS, GROQ_MAX_SOURCE_CONTEXT_CHARS, AI_MAX_CONSECUTIVE_FAILURES, bool(GROQ_API_KEY),
     SOURCE_IMAGE_REUSE_AUTHORIZED, SOURCE_CONTEXT_MODE,
     sum(1 for source in SOURCES if source.get("enabled")),
 )
@@ -1527,7 +1530,7 @@ SEO
 - Nội dung website dùng taxonomy theo quốc gia và chủ đề. Hãy ưu tiên destination_country_hint / destination_city_hint / primary_site_category_hint đã cung cấp; nếu đang là "World / Chưa phân loại" thì không tự gán quốc gia khi không có căn cứ.
 - Nếu source_content_mode=source_body_reference: sử dụng source_reference_material như tài liệu tham khảo để xác định dữ kiện và chủ đề; không sao chép câu, không giữ nguyên thứ tự đoạn/heading và không làm bản dịch sát nghĩa. Tự thiết kế cấu trúc theo nhu cầu độc giả Việt Nam.
 - Nếu source_content_mode=metadata_only hoặc metadata_fallback: chỉ dùng title, description, ngày/chuyên mục, từ khóa metadata và ảnh; dữ kiện hạn chế thì chỉ viết bản nháp ngắn và đánh dấu cần bổ sung thông tin.
-- Bài có sapo, h2/h3 hợp lý và kết luận tự nhiên. Khi source_reference_material đủ thông tin, mục tiêu khoảng 450–700 từ cho hướng dẫn du lịch, có các phần thực dụng như cách di chuyển, giấy tờ/điều kiện, chi phí nếu nguồn nêu, lịch trình, điểm cần lưu ý; không tự bịa giá/số liệu/thông tin hiện hành.
+- Bài có sapo, h2/h3 hợp lý và kết luận tự nhiên. Khi source_reference_material đủ thông tin, mục tiêu khoảng 600–1000 từ cho hướng dẫn du lịch, có các phần thực dụng như cách di chuyển, giấy tờ/điều kiện, chi phí nếu nguồn nêu, lịch trình, điểm cần lưu ý; không tự bịa giá/số liệu/thông tin hiện hành.
 - Với chế độ metadata-only, không biến caption ảnh thành bằng chứng chắc chắn về sự kiện; coi caption là gợi ý ngữ cảnh ảnh và ghi cần kiểm tra nếu dùng làm dữ kiện.
 - Nếu inline_image_catalog có ảnh, hãy chèn marker [[IMAGE:IMG_01]] (đúng ID có trong catalog) thành một đoạn riêng tại vị trí hợp ngữ cảnh trong content_html, ví dụ sau đoạn đang nói về ngôi làng/nghề thủ công/người được chụp. Giữ thứ tự ảnh nguồn nếu hợp lý; không dồn tất cả ảnh lên đầu. Không tự tạo ID ảnh.
 - Marker chỉ là điểm đặt ảnh; chương trình sẽ thay marker bằng HTML ảnh có kiểm soát quyền sử dụng hoặc placeholder duyệt quyền.
@@ -1811,6 +1814,22 @@ def _call_openrouter(instructions, input_data):
     return content
 
 
+def _groq_request_input(input_data, max_chars=None):
+    """Trim only Groq's source-body context to fit its on-demand request TPM ceiling.
+
+    Other providers receive the full configured source context. The structured fact
+    sheet and metadata are retained so Groq still has grounded key details.
+    """
+    payload = dict(input_data or {})
+    source = str(payload.get("source_reference_material") or "")
+    limit = max_chars or GROQ_MAX_SOURCE_CONTEXT_CHARS
+    if source and len(source) > limit:
+        payload["source_reference_material"] = _prepare_source_reference_text(source, limit)
+        payload["source_reference_chars"] = len(payload["source_reference_material"])
+        payload["source_reference_truncated"] = True
+    return payload
+
+
 def _configured_ai_providers(instructions, input_data):
     """Order: Gemini -> real OpenAI key (if configured) -> Groq -> OpenRouter."""
     providers = []
@@ -1819,7 +1838,13 @@ def _configured_ai_providers(instructions, input_data):
     if OPENAI_API_KEY:
         providers.append(("OpenAI", lambda: _call_openai(instructions, input_data)))
     if GROQ_API_KEY:
-        providers.append(("Groq", lambda: _call_groq(instructions, input_data)))
+        groq_input = _groq_request_input(input_data)
+        log.info(
+            "Groq fallback input: source_context_chars=%s (full provider context=%s)",
+            groq_input.get("source_reference_chars", 0),
+            len(str(input_data.get("source_reference_material") or "")),
+        )
+        providers.append(("Groq", lambda: _call_groq(instructions, groq_input)))
     if OPENROUTER_API_KEY:
         providers.append(("OpenRouter", lambda: _call_openrouter(instructions, input_data)))
     return providers
