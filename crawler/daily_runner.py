@@ -154,6 +154,7 @@ def main():
 
     new_published = 0
     ai_quota_stop = False
+    ai_stop_reason = ""
     failed = 0
     crawler_result = {}
     if remaining > 0:
@@ -162,7 +163,10 @@ def main():
         crawler_result = bot.main(["--limit", str(remaining)]) or {}
         new_published = int(crawler_result.get("published_count", 0) or 0)
         failed = int(crawler_result.get("failed", 0) or 0)
-        ai_quota_stop = bool(crawler_result.get("ai_quota_stop"))
+        ai_quota_stop = bool(
+            crawler_result.get("ai_provider_stop", crawler_result.get("ai_quota_stop"))
+        )
+        ai_stop_reason = str(crawler_result.get("ai_stop_reason") or "")
         published_articles.extend(crawler_result.get("published_articles") or [])
     else:
         bot._reconcile_site_publications()
@@ -184,7 +188,7 @@ def main():
     duration_seconds = float(crawler_result.get("duration_seconds", 0) or 0)
 
     if ai_quota_stop:
-        report_status = "quota_limited"
+        report_status = "ai_provider_unavailable"
     elif total_published == 0 and int(discovery.get("failed_feeds", 0) or 0) > 0 and candidate_url_count == 0:
         report_status = "source_error"
     elif total_published == 0 and irrelevant_skipped_count > 0 and processed_articles == 0 and failed == 0:
@@ -231,6 +235,8 @@ def main():
         "cover_recheck_failed": int(cover_recheck.get("failed", 0) or 0),
         "duration_seconds": duration_seconds,
         "ai_quota_stop": ai_quota_stop,
+        "ai_provider_stop": ai_quota_stop,
+        "ai_stop_reason": ai_stop_reason,
         "site_url": site_publisher.SITE_URL,
         "articles": published_articles,
         "feed_stats": feed_stats[:30],
@@ -248,8 +254,9 @@ def main():
 
     if ai_quota_stop:
         log.warning(
-            "Run kết thúc sớm vì AI quota/rate limit; không tiếp tục tiêu token trong hôm nay. "
-            "URL chưa có bản AI hoàn chỉnh sẽ được thử lại vào lịch ngày mai."
+            "Run kết thúc sớm vì AI providers thất bại liên tiếp; không tiếp tục gọi API trong hôm nay. "
+            "Lý do: %s URL chưa có bản AI hoàn chỉnh sẽ được thử lại vào lịch ngày mai.",
+            ai_stop_reason or "AI provider không khả dụng.",
         )
 
 
