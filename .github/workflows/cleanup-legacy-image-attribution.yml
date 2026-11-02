@@ -1,6 +1,12 @@
 name: Clean legacy public image attribution
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cleanup-legacy-image-attribution.yml"
+      - "crawler/cleanup_public_image_attribution.py"
   workflow_dispatch:
 
 permissions:
