@@ -138,9 +138,11 @@ if _MISPLACED_GROQ_KEY:
         "OPENAI_API_KEY có tiền tố gsk_; đây là định dạng key Groq. Đã tự chuyển key này sang provider Groq cho phiên chạy hiện tại; hãy chuyển key sang GROQ_API_KEY trong .env. Không có key nào được in ra log."
     )
 log.info(
-    "AI config loaded: dotenv=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
+    "AI config loaded: dotenv=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
     os.path.join(PROJECT_DIR, ".env"), GEMINI_TIMEOUT_MS / 1000.0,
-    AI_PROVIDER_TIMEOUT_SECONDS, GEMINI_RETRY_ATTEMPTS, AI_MAX_OUTPUT_TOKENS, bool(GROQ_API_KEY), SOURCE_IMAGE_REUSE_AUTHORIZED, SOURCE_CONTEXT_MODE,
+    AI_PROVIDER_TIMEOUT_SECONDS, GEMINI_RETRY_ATTEMPTS, AI_MAX_OUTPUT_TOKENS, GROQ_MAX_OUTPUT_TOKENS,
+    MAX_SOURCE_BODY_CHARS, AI_MAX_CONSECUTIVE_FAILURES, bool(GROQ_API_KEY),
+    SOURCE_IMAGE_REUSE_AUTHORIZED, SOURCE_CONTEXT_MODE,
     sum(1 for source in SOURCES if source.get("enabled")),
 )
 
@@ -901,6 +903,16 @@ def _is_ai_capacity_error(message):
     return any(marker in value for marker in markers)
 
 
+def _should_stop_after_ai_failures(consecutive_failures, threshold=None):
+    """Stop only after repeated full-provider failures, not after one bad article."""
+    try:
+        limit = int(threshold if threshold is not None else AI_MAX_CONSECUTIVE_FAILURES)
+        count = int(consecutive_failures)
+    except (TypeError, ValueError):
+        return False
+    return count >= max(1, limit)
+
+
 def already_seen(url):
     """Skip known aliases/duplicates and completed records, but allow incomplete AI failures to retry."""
     url = normalize_url(url) or url
@@ -1498,7 +1510,7 @@ SEO
 - Nội dung website dùng taxonomy theo quốc gia và chủ đề. Hãy ưu tiên destination_country_hint / destination_city_hint / primary_site_category_hint đã cung cấp; nếu đang là "World / Chưa phân loại" thì không tự gán quốc gia khi không có căn cứ.
 - Nếu source_content_mode=source_body_reference: sử dụng source_reference_material như tài liệu tham khảo để xác định dữ kiện và chủ đề; không sao chép câu, không giữ nguyên thứ tự đoạn/heading và không làm bản dịch sát nghĩa. Tự thiết kế cấu trúc theo nhu cầu độc giả Việt Nam.
 - Nếu source_content_mode=metadata_only hoặc metadata_fallback: chỉ dùng title, description, ngày/chuyên mục, từ khóa metadata và ảnh; dữ kiện hạn chế thì chỉ viết bản nháp ngắn và đánh dấu cần bổ sung thông tin.
-- Bài có sapo, h2/h3 hợp lý và kết luận tự nhiên. Khi source_reference_material đủ thông tin, mục tiêu khoảng 600–1000 từ cho hướng dẫn du lịch, có các phần thực dụng như cách di chuyển, giấy tờ/điều kiện, chi phí nếu nguồn nêu, lịch trình, điểm cần lưu ý; không tự bịa giá/số liệu/thông tin hiện hành.
+- Bài có sapo, h2/h3 hợp lý và kết luận tự nhiên. Khi source_reference_material đủ thông tin, mục tiêu khoảng 450–700 từ cho hướng dẫn du lịch, có các phần thực dụng như cách di chuyển, giấy tờ/điều kiện, chi phí nếu nguồn nêu, lịch trình, điểm cần lưu ý; không tự bịa giá/số liệu/thông tin hiện hành.
 - Với chế độ metadata-only, không biến caption ảnh thành bằng chứng chắc chắn về sự kiện; coi caption là gợi ý ngữ cảnh ảnh và ghi cần kiểm tra nếu dùng làm dữ kiện.
 - Nếu inline_image_catalog có ảnh, hãy chèn marker [[IMAGE:IMG_01]] (đúng ID có trong catalog) thành một đoạn riêng tại vị trí hợp ngữ cảnh trong content_html, ví dụ sau đoạn đang nói về ngôi làng/nghề thủ công/người được chụp. Giữ thứ tự ảnh nguồn nếu hợp lý; không dồn tất cả ảnh lên đầu. Không tự tạo ID ảnh.
 - Marker chỉ là điểm đặt ảnh; chương trình sẽ thay marker bằng HTML ảnh có kiểm soát quyền sử dụng hoặc placeholder duyệt quyền.
@@ -1725,7 +1737,7 @@ def _call_groq(instructions, input_data):
         ],
         response_format={"type": "json_object"},
         temperature=0.3,
-        max_completion_tokens=AI_MAX_OUTPUT_TOKENS,
+        max_completion_tokens=GROQ_MAX_OUTPUT_TOKENS,
     )
     if not response.choices:
         raise ValueError("Groq trả về 0 choices")
@@ -2769,7 +2781,9 @@ def main(argv=None):
     duplicates = 0
     irrelevant_skipped = 0
     failed = 0
-    ai_quota_stop = False
+    ai_quota_stop = False  # Backward-compatible result key; now means repeated provider failure.
+    consecutive_ai_failures = 0
+    ai_stop_reason = ""
     published_articles = []
     failure_items = []
 
@@ -2862,6 +2876,7 @@ def main(argv=None):
                 try:
                     draft = create_ai_draft(article)
                     if draft:
+                        consecutive_ai_failures = 0
                         article.update(draft)
                         status = "drafted_fallback" if draft.get("ai_fallback_reason") else "drafted"
                         if draft.get("ai_fallback_reason"):
@@ -2870,9 +2885,26 @@ def main(argv=None):
                     error_message = f"AI providers failed: {type(exc).__name__}: {clean_text(str(exc))[:700]}"
                     status = "ai_failed_metadata_only"
                     log.exception("AI provider lỗi; giữ artifact để có thể tiếp tục: %s", canonical_url)
-                    ai_quota_stop = _is_ai_capacity_error(error_message)
-                    if ai_quota_stop:
-                        log.warning("AI provider đã chạm quota/rate limit hoặc lỗi xác thực; dừng lượt hôm nay để tránh gọi lặp.")
+                    consecutive_ai_failures += 1
+                    if _should_stop_after_ai_failures(consecutive_ai_failures):
+                        ai_quota_stop = True
+                        if _is_ai_capacity_error(error_message):
+                            ai_stop_reason = (
+                                f"Các provider AI đã thất bại liên tiếp {consecutive_ai_failures} bài; "
+                                "log có dấu hiệu quota/rate limit/xác thực."
+                            )
+                        else:
+                            ai_stop_reason = (
+                                f"Tất cả provider AI đều không tạo được bài trong "
+                                f"{consecutive_ai_failures} URL mới liên tiếp."
+                            )
+                        log.warning("%s Dừng để tránh tiếp tục gọi API lặp lại.", ai_stop_reason)
+                    else:
+                        log.warning(
+                            "Bài AI này thất bại nhưng crawler sẽ thử URL tiếp theo "
+                            "(chuỗi lỗi %s/%s).",
+                            consecutive_ai_failures, AI_MAX_CONSECUTIVE_FAILURES,
+                        )
 
             # Write a stable per-source artifact before syncing so API failures do not force AI regeneration.
             try:
@@ -2944,7 +2976,10 @@ def main(argv=None):
             processed += 1
             time.sleep(2)
             if ai_quota_stop:
-                log.warning("Đã lưu bài chưa hoàn chỉnh; URL này sẽ được thử lại ở lần chạy hằng ngày tiếp theo.")
+                log.warning(
+                    "Đã lưu bài chưa hoàn chỉnh; dừng lượt crawl. Lý do: %s URL lỗi sẽ được thử lại ở lần chạy tiếp theo.",
+                    ai_stop_reason or "AI providers không khả dụng liên tiếp.",
+                )
                 break
 
         except Exception as exc:
@@ -2965,7 +3000,7 @@ def main(argv=None):
         f"Bài trùng đã bỏ qua: {duplicates}\n"
         f"Bài ngoài danh mục đã bỏ qua: {irrelevant_skipped}\n"
         f"Bài lỗi/chưa xuất bản: {failed}\n"
-        + ("AI quota/rate limit đã chạm; đã dừng sớm và giữ URL lỗi để thử lại ngày sau." if ai_quota_stop
+        + (f"{ai_stop_reason} URL lỗi đã được giữ để thử lại ở lần chạy sau." if ai_quota_stop
            else "Có thể xuất bản ít hơn mục tiêu nếu nguồn mới hoặc AI/API không đáp ứng.")
     )
     log.info(summary)
@@ -2973,6 +3008,9 @@ def main(argv=None):
         "published_count": published_count,
         "failed": failed,
         "ai_quota_stop": ai_quota_stop,
+        "ai_provider_stop": ai_quota_stop,
+        "ai_stop_reason": ai_stop_reason,
+        "consecutive_ai_failures": consecutive_ai_failures,
         "attempted": attempted,
         "published_articles": published_articles,
         "discovery": dict(LAST_DISCOVERY_REPORT or {}),
