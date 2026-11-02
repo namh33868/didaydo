@@ -47,7 +47,7 @@ ALLOW_FULL_TEXT_STORAGE = os.getenv("ALLOW_FULL_TEXT_STORAGE", "false").strip().
 # Nếu false, ảnh vẫn được trích xuất/tham chiếu và đặt placeholder đúng vị trí trong bản nháp.
 SOURCE_IMAGE_REUSE_AUTHORIZED = os.getenv("SOURCE_IMAGE_REUSE_AUTHORIZED", "true").strip().lower() in {"1", "true", "yes"}
 # Keep source context compact enough for constrained fallback providers.
-# The original source is still available to the editor; only the AI request is bounded.
+# The source URL remains the reference; only context passed into the AI request is bounded.
 MAX_SOURCE_BODY_CHARS = max(6000, min(int(os.getenv("MAX_SOURCE_BODY_CHARS", "12000")), 24000))
 # Smart context mode: fetch the accessible article text in memory so the writer has
 # enough facts, but do not persist the source's full text by default. Crucially, this
@@ -909,7 +909,7 @@ def classify_article(article, item=None):
 
 
 def _is_ai_capacity_error(message):
-    """Recognize provider-wide quota/auth throttling so one exhausted run doesn't burn more calls."""
+    """Identify quota, rate-limit, and authentication markers in provider errors."""
     value = clean_text(message).casefold()
     markers = (
         "quota", "resource_exhausted", "429", "rate limit", "rate_limit",
