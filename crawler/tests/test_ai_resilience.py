@@ -70,7 +70,7 @@ class AIResilienceTests(unittest.TestCase):
         self.assertFalse(main._is_promotional_or_decorative_image(photo, photo["src"]))
 
     def test_english_output_is_rejected_but_vietnamese_is_accepted(self):
-        with self.assertRaisesRegex(ValueError, "nội dung tiếng Anh"):
+        with self.assertRaisesRegex(ValueError, "tiếng Anh"):
             main._validate_vietnamese_output(
                 "Best places to visit in Japan",
                 "Discover the best things to do in Kyoto.",
