@@ -87,6 +87,22 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertIn("Cover image: RuntimeError", record["sync_error"])
 
 
+    def test_payload_preserves_multiple_classified_categories(self):
+        article = {
+            "source_url": "https://travel.example.com/story",
+            "source_title": "Ẩm thực và điểm đến",
+            "primary_category": "food-and-drink",
+            "topic_categories": ["food-and-drink", "things-to-do", "travel-tips"],
+        }
+        draft = {
+            "seo_title": "Ẩm thực và điểm đến",
+            "seo_content": "<p>Nội dung tiếng Việt.</p>",
+        }
+        article["editorial_cover_image"] = {"url": "https://images.example/photo.jpg", "alt": "Ảnh"}
+        payload = site_publisher.build_site_payload(article, draft)
+        self.assertEqual(payload["category"], "Ẩm thực")
+        self.assertEqual(payload["categories"], ["Ẩm thực", "Check-in", "Kinh nghiệm du lịch"])
+
     def test_source_article_photo_uses_original_url_without_processing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = str(Path(temp_dir) / "crawler.sqlite")
