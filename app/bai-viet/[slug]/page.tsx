@@ -86,7 +86,7 @@ export default async function ArticlePage({ params }: Props) {
     datePublished: post.published_at?.toISOString(), dateModified: post.updated_at.toISOString(),
     author: { "@type": "Organization", name: post.author_name || "Ban biên tập" },
     publisher: { "@type": "Organization", name: siteName, url: absoluteUrl("/") },
-    mainEntityOfPage: articleUrl, inLanguage: "vi-VN", articleSection: post.category_name,
+    mainEntityOfPage: articleUrl, inLanguage: "vi-VN",
     articleSection: (post.categories || [{ name: post.category_name }]).map((category) => category.name),
     keywords: post.tags.join(", "), isAccessibleForFree: true,
   };
