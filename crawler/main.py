@@ -1763,6 +1763,11 @@ def _validate_vietnamese_output(seo_title, meta_description, content):
         raise ValueError("AI còn để tiêu đề/meta tiếng Anh; yêu cầu viết lại bằng tiếng Việt")
     if body_words >= 80 and body_hits >= 6 and body_hits / body_words >= 0.025:
         raise ValueError("AI còn để nội dung tiếng Anh; bài bị giữ lại để thử provider khác")
+    soup = BeautifulSoup(str(content or ""), "html.parser")
+    for block in soup.find_all(["p", "h2", "h3", "h4", "li", "blockquote"]):
+        block_hits, block_words = _english_text_signal(block.get_text(" ", strip=True))
+        if block_words >= 5 and block_hits >= 3 and block_hits / block_words >= 0.20:
+            raise ValueError("AI còn để đoạn tiếng Anh trong bài; không được xuất bản khi chưa Việt hóa toàn bộ")
 
 
 def _parse_and_validate_ai_draft(raw, provider):
@@ -2123,6 +2128,11 @@ def _insert_inline_images(article, draft):
     SOURCE_IMAGE_REUSE_AUTHORIZED=true is explicitly set by the operator.
     """
     images = _image_list_from_article(article)
+    try:
+        max_inline_images = max(1, min(int(os.getenv("SOURCE_ARTICLE_MAX_IMAGES", "4")), 6))
+    except ValueError:
+        max_inline_images = 4
+    images = images[:max_inline_images]
     content = draft.get("seo_content", "") or ""
     if not images or not content:
         return draft
