@@ -155,6 +155,8 @@ def main():
     new_published = 0
     ai_quota_stop = False
     ai_stop_reason = ""
+    fatal_error = False
+    fatal_error_reason = ""
     failed = 0
     crawler_result = {}
     if remaining > 0:
@@ -167,6 +169,8 @@ def main():
             crawler_result.get("ai_provider_stop", crawler_result.get("ai_quota_stop"))
         )
         ai_stop_reason = str(crawler_result.get("ai_stop_reason") or "")
+        fatal_error = bool(crawler_result.get("fatal_error", False))
+        fatal_error_reason = str(crawler_result.get("fatal_error_reason") or "")
         published_articles.extend(crawler_result.get("published_articles") or [])
     else:
         bot._reconcile_site_publications()
@@ -187,7 +191,9 @@ def main():
     irrelevant_skipped_count = int(crawler_result.get("irrelevant_skipped_count", 0) or 0)
     duration_seconds = float(crawler_result.get("duration_seconds", 0) or 0)
 
-    if ai_quota_stop:
+    if fatal_error:
+        report_status = "fatal_error"
+    elif ai_quota_stop:
         report_status = "ai_provider_unavailable"
     elif total_published == 0 and int(discovery.get("failed_feeds", 0) or 0) > 0 and candidate_url_count == 0:
         report_status = "source_error"
@@ -237,6 +243,10 @@ def main():
         "ai_quota_stop": ai_quota_stop,
         "ai_provider_stop": ai_quota_stop,
         "ai_stop_reason": ai_stop_reason,
+        "fatal_error": fatal_error,
+        "fatal_error_reason": fatal_error_reason,
+        "ai_providers_disabled": crawler_result.get("ai_providers_disabled") or {},
+        "ai_provider_cooldowns": crawler_result.get("ai_provider_cooldowns") or {},
         "site_url": site_publisher.SITE_URL,
         "articles": published_articles,
         "feed_stats": feed_stats[:30],
@@ -249,7 +259,18 @@ def main():
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     log.info("Đã tạo báo cáo xuất bản: %s", report_path)
 
-    if failed and not ai_quota_stop:
+    if failed and not fatal_error:
+        log.warning(
+            "Có %s bài chưa xuất bản được nhưng không phát hiện lỗi hệ thống; "
+            "giữ bài lỗi để thử lại và vẫn hoàn tất lượt chạy.",
+            failed,
+        )
+
+    if fatal_error:
+        log.error(
+            "Crawler dừng do lỗi hệ thống khi xuất bản: %s",
+            fatal_error_reason or "Không có mô tả chi tiết.",
+        )
         raise SystemExit(1)
 
     if ai_quota_stop:

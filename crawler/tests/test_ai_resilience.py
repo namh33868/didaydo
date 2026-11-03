@@ -6,6 +6,18 @@ import main
 
 
 class AIResilienceTests(unittest.TestCase):
+    def setUp(self):
+        self.previous_disabled = dict(main._AI_PROVIDERS_DISABLED_FOR_RUN)
+        self.previous_cooldowns = dict(main._AI_PROVIDER_COOLDOWN_UNTIL)
+        main._AI_PROVIDERS_DISABLED_FOR_RUN.clear()
+        main._AI_PROVIDER_COOLDOWN_UNTIL.clear()
+
+    def tearDown(self):
+        main._AI_PROVIDERS_DISABLED_FOR_RUN.clear()
+        main._AI_PROVIDERS_DISABLED_FOR_RUN.update(self.previous_disabled)
+        main._AI_PROVIDER_COOLDOWN_UNTIL.clear()
+        main._AI_PROVIDER_COOLDOWN_UNTIL.update(self.previous_cooldowns)
+
     def test_source_reference_is_bounded_and_preserves_both_ends(self):
         source = "INTRO " + ("A" * 180) + " MIDDLE " + ("B" * 180) + " ENDING"
         prepared = main._prepare_source_reference_text(source, max_chars=120)
@@ -45,6 +57,41 @@ class AIResilienceTests(unittest.TestCase):
     def test_request_too_large_is_not_misclassified_as_global_quota(self):
         self.assertFalse(main._is_ai_capacity_error("HTTP 413: Request too large for model"))
         self.assertTrue(main._is_ai_capacity_error("HTTP 429: rate limit exceeded"))
+
+    def test_daily_quota_provider_is_skipped_for_rest_of_run(self):
+        with (
+            patch.object(main, "GEMINI_API_KEY", "test-gemini-key"),
+            patch.object(main, "OPENAI_API_KEY", ""),
+            patch.object(main, "GROQ_API_KEY", "test-groq-key"),
+            patch.object(main, "OPENROUTER_API_KEY", ""),
+            patch.object(
+                main,
+                "_call_gemini",
+                side_effect=RuntimeError(
+                    "429 RESOURCE_EXHAUSTED: Generate content requests per day limit exceeded"
+                ),
+            ) as gemini,
+            patch.object(main, "_call_groq", return_value='{"ok": true}') as groq,
+        ):
+            for _ in range(2):
+                result, provider, _reason = main._call_json_with_fallback(
+                    "test",
+                    "instructions",
+                    {"input": "small"},
+                    lambda raw, _provider: raw,
+                )
+                self.assertEqual(result, '{"ok": true}')
+                self.assertEqual(provider, "Groq")
+
+        self.assertEqual(gemini.call_count, 1)
+        self.assertEqual(groq.call_count, 2)
+        self.assertIn("Gemini", main._AI_PROVIDERS_DISABLED_FOR_RUN)
+
+    def test_cover_image_failure_is_article_level_not_site_failure(self):
+        self.assertTrue(main._is_cover_only_publish_failure(
+            "RuntimeError: Bài nguồn không có ảnh hợp lệ và cũng không tìm được ảnh ngoài phù hợp; bài được giữ lại."
+        ))
+        self.assertFalse(main._is_cover_only_publish_failure("HTTP 500: Vercel ingest API unavailable"))
 
     def test_fallback_tries_next_provider_after_one_provider_fails(self):
         def fail():

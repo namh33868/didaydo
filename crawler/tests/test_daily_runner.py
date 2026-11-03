@@ -22,7 +22,8 @@ class DailyRunnerTests(unittest.TestCase):
             }
             crawler_result = {
                 "published_count": 1,
-                "failed": 0,
+                "failed": 1,
+                "fatal_error": False,
                 "ai_quota_stop": False,
                 "attempted": 1,
                 "processed_articles": 1,
@@ -38,7 +39,12 @@ class DailyRunnerTests(unittest.TestCase):
                     "feed_errors": [],
                     "feed_stats": [],
                 },
-                "failure_items": [],
+                "failure_items": [{
+                    "stage": "ai",
+                    "title": "Bài thử nghiệm chưa tạo được bản AI hoàn chỉnh",
+                    "source": "Test source",
+                    "reason": "Các AI provider đang tạm ngưng do quota.",
+                }],
                 "published_articles": [],
             }
 
@@ -75,6 +81,9 @@ class DailyRunnerTests(unittest.TestCase):
             self.assertEqual(report["cover_recheck_updated"], 0)
             self.assertEqual(report["cover_recheck_unmatched"], 0)
             self.assertEqual(report["cover_recheck_failed"], 0)
+            self.assertEqual(report["status"], "warning")
+            self.assertEqual(report["failed_count"], 1)
+            self.assertFalse(report["fatal_error"])
             recheck.assert_not_called()
 
 
