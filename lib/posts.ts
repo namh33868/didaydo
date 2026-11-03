@@ -1,5 +1,6 @@
 import { db, type PostRecord, type PostSummary } from "@/lib/db";
 import { ensureFeaturedSchedule } from "@/lib/featured";
+import { ensurePostCategoriesSchema, getPostCategories } from "@/lib/taxonomy";
 
 // List queries return PostSummary and avoid transferring full article HTML.
 export async function getPublishedPosts(limit = 12, offset = 0) {
@@ -98,6 +99,7 @@ export async function getFeaturedPost() {
 }
 
 export async function getPostBySlug(slug: string) {
+  await ensurePostCategoriesSchema();
   const rows = await db<Omit<PostRecord, "cover_credit">[]>`
     SELECT id, title, slug, excerpt, content_html, cover_image, cover_alt,
       category_name, category_slug, country_id, country_name, country_slug,
@@ -106,11 +108,15 @@ export async function getPostBySlug(slug: string) {
       seo_title, seo_description, published_at, created_at, updated_at
     FROM posts WHERE slug = ${slug} AND status = 'published' AND published_at <= NOW() LIMIT 1
   `;
-  return rows[0] ?? null;
+  const post = rows[0];
+  if (!post) return null;
+  const categories = await getPostCategories(post.id);
+  return { ...post, categories: categories.length ? categories : [{ name: post.category_name, slug: post.category_slug }] };
 }
 
 export async function getPostsByCategory(slug: string, limit = 12, offset = 0) {
   await ensureFeaturedSchedule();
+  await ensurePostCategoriesSchema();
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
       char_length(regexp_replace(content_html, '<[^>]+>', ' ', 'g'))::int AS content_length,
@@ -118,20 +124,25 @@ export async function getPostsByCategory(slug: string, limit = 12, offset = 0) {
       country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
       tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
       published_at, created_at, updated_at
-    FROM posts WHERE category_slug = ${slug} AND status = 'published' AND published_at <= NOW()
+    FROM posts WHERE EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = posts.id AND c.slug = ${slug}) AND status = 'published' AND published_at <= NOW()
     ORDER BY featured DESC, published_at DESC NULLS LAST LIMIT ${limit} OFFSET ${offset}
   `;
 }
 
 export async function getCategorySlugs() {
+  await ensurePostCategoriesSchema();
   return db<{ category_slug: string; category_name: string; total: number }[]>`
-    SELECT category_slug, MAX(category_name) AS category_name, COUNT(*)::int AS total
-    FROM posts WHERE status = 'published' AND published_at <= NOW()
-    GROUP BY category_slug ORDER BY MAX(category_name) ASC
+    SELECT c.slug AS category_slug, c.name AS category_name, COUNT(DISTINCT p.id)::int AS total
+    FROM categories c
+    JOIN post_categories pc ON pc.category_id = c.id
+    JOIN posts p ON p.id = pc.post_id
+    WHERE p.status = 'published' AND p.published_at <= NOW()
+    GROUP BY c.slug, c.name ORDER BY c.name ASC
   `;
 }
 
 export async function searchPosts(query: string, limit = 30) {
+  await ensurePostCategoriesSchema();
   const needle = `%${query.trim().replace(/[%_]/g, "\\$&")}%`;
   return db<PostSummary[]>`
     SELECT id, title, slug, excerpt,
@@ -142,7 +153,7 @@ export async function searchPosts(query: string, limit = 30) {
       published_at, created_at, updated_at
     FROM posts
     WHERE status = 'published' AND published_at <= NOW()
-      AND (title ILIKE ${needle} OR excerpt ILIKE ${needle} OR category_name ILIKE ${needle} OR country_name ILIKE ${needle} OR destination_name ILIKE ${needle} OR ${query} = ANY(tags))
+      AND (title ILIKE ${needle} OR excerpt ILIKE ${needle} OR category_name ILIKE ${needle} OR EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = posts.id AND c.name ILIKE ${needle}) OR country_name ILIKE ${needle} OR destination_name ILIKE ${needle} OR ${query} = ANY(tags))
     ORDER BY published_at DESC NULLS LAST LIMIT ${limit}
   `;
 }
