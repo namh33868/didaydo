@@ -2,6 +2,74 @@ import { db, type PostSummary } from "@/lib/db";
 import { slugify } from "@/lib/format";
 import { normalizeEditorialCategory } from "@/lib/editorial-taxonomy";
 
+export type PostCategory = { name: string; slug: string };
+let postCategoriesSchemaPromise: Promise<void> | null = null;
+
+/** Additive runtime migration for existing Neon databases. */
+export async function ensurePostCategoriesSchema() {
+  if (!postCategoriesSchemaPromise) {
+    postCategoriesSchemaPromise = (async () => {
+      await db`CREATE TABLE IF NOT EXISTS post_categories (
+        post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+        is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (post_id, category_id)
+      )`;
+      await db`CREATE INDEX IF NOT EXISTS post_categories_category_post_idx
+        ON post_categories (category_id, post_id)`;
+      await db`INSERT INTO post_categories (post_id, category_id, is_primary)
+        SELECT p.id, c.id, TRUE FROM posts p
+        JOIN categories c ON c.slug = p.category_slug
+        ON CONFLICT (post_id, category_id) DO UPDATE SET is_primary = TRUE`;
+    })().catch((error) => {
+      postCategoriesSchemaPromise = null;
+      throw error;
+    });
+  }
+  await postCategoriesSchemaPromise;
+}
+
+export async function setPostCategories(postId: string, names: string[], primaryName?: string) {
+  await ensurePostCategoriesSchema();
+  const uniqueNames = [...new Set((names || []).map((name) => name.trim()).filter(Boolean))].slice(0, 12);
+  const topics: { id: string; name: string; slug: string }[] = [];
+  for (const name of uniqueNames) topics.push(await ensureTopic(name));
+  const primarySlug = topics.find((topic) => topic.name === (primaryName || uniqueNames[0]))?.slug || topics[0]?.slug;
+  await db.begin(async (tx) => {
+    await tx`DELETE FROM post_categories WHERE post_id = ${postId}::uuid`;
+    for (const topic of topics) {
+      await tx`INSERT INTO post_categories (post_id, category_id, is_primary)
+        VALUES (${postId}::uuid, ${topic.id}::uuid, ${topic.slug === primarySlug})
+        ON CONFLICT (post_id, category_id) DO UPDATE SET is_primary = EXCLUDED.is_primary`;
+    }
+  });
+  return topics.map((topic) => ({ name: topic.name, slug: topic.slug }));
+}
+
+export async function getPostCategoryMap(postIds: string[]) {
+  await ensurePostCategoriesSchema();
+  const map = new Map<string, PostCategory[]>();
+  if (!postIds.length) return map;
+  const rows = await db<{ post_id: string; name: string; slug: string }[]>`
+    SELECT pc.post_id, c.name, c.slug
+    FROM post_categories pc JOIN categories c ON c.id = pc.category_id
+    WHERE pc.post_id = ANY(${postIds}::uuid[])
+    ORDER BY pc.is_primary DESC, c.display_order ASC, c.name ASC
+  `;
+  for (const row of rows) {
+    const current = map.get(row.post_id) || [];
+    current.push({ name: row.name, slug: row.slug });
+    map.set(row.post_id, current);
+  }
+  return map;
+}
+
+export async function getPostCategories(postId: string) {
+  const map = await getPostCategoryMap([postId]);
+  return map.get(postId) || [];
+}
+
 export type DestinationKind = "country" | "city";
 
 const COUNTRY_ALIASES: Record<string, string> = {
@@ -141,21 +209,27 @@ export async function getCityBySlug(countryId: string, slug: string) {
 }
 
 export async function getTopicsForLocation(countryId: string, cityId?: string): Promise<TopicCount[]> {
+  await ensurePostCategoriesSchema();
   if (cityId) {
     return db<TopicCount[]>`
-      SELECT category_name, category_slug, COUNT(*)::int AS total FROM posts
-      WHERE destination_id = ${cityId} AND status = 'published' AND published_at <= NOW()
-      GROUP BY category_name, category_slug ORDER BY total DESC, category_name ASC
+      SELECT c.name AS category_name, c.slug AS category_slug, COUNT(DISTINCT p.id)::int AS total
+      FROM posts p JOIN post_categories pc ON pc.post_id = p.id
+      JOIN categories c ON c.id = pc.category_id
+      WHERE p.destination_id = ${cityId} AND p.status = 'published' AND p.published_at <= NOW()
+      GROUP BY c.name, c.slug ORDER BY total DESC, category_name ASC
     `;
   }
   return db<TopicCount[]>`
-    SELECT category_name, category_slug, COUNT(*)::int AS total FROM posts
-    WHERE country_id = ${countryId} AND status = 'published' AND published_at <= NOW()
-    GROUP BY category_name, category_slug ORDER BY total DESC, category_name ASC
+    SELECT c.name AS category_name, c.slug AS category_slug, COUNT(DISTINCT p.id)::int AS total
+    FROM posts p JOIN post_categories pc ON pc.post_id = p.id
+    JOIN categories c ON c.id = pc.category_id
+    WHERE p.country_id = ${countryId} AND p.status = 'published' AND p.published_at <= NOW()
+    GROUP BY c.name, c.slug ORDER BY total DESC, category_name ASC
   `;
 }
 
 export async function getPostsForLocation(countryId: string, cityId: string | undefined, topicSlug: string | undefined, limit = 12, offset = 0) {
+  await ensurePostCategoriesSchema();
   if (cityId && topicSlug) {
     return db<PostSummary[]>`
       SELECT id, title, slug, excerpt,
@@ -163,7 +237,7 @@ export async function getPostsForLocation(countryId: string, cityId: string | un
         cover_image, cover_alt, cover_credit, category_name, category_slug,
         country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
         tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
-        published_at, created_at, updated_at FROM posts WHERE destination_id = ${cityId} AND category_slug = ${topicSlug}
+        published_at, created_at, updated_at FROM posts WHERE destination_id = ${cityId} AND EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = posts.id AND c.slug = ${topicSlug})
         AND status = 'published' AND published_at <= NOW()
       ORDER BY featured DESC, published_at DESC NULLS LAST, created_at DESC LIMIT ${limit} OFFSET ${offset}
     `;
@@ -186,7 +260,7 @@ export async function getPostsForLocation(countryId: string, cityId: string | un
         cover_image, cover_alt, cover_credit, category_name, category_slug,
         country_id, country_name, country_slug, destination_id, destination_name, destination_slug,
         tags, status, featured, author_name, source_url, source_name, seo_title, seo_description,
-        published_at, created_at, updated_at FROM posts WHERE country_id = ${countryId} AND category_slug = ${topicSlug}
+        published_at, created_at, updated_at FROM posts WHERE country_id = ${countryId} AND EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = posts.id AND c.slug = ${topicSlug})
         AND status = 'published' AND published_at <= NOW()
       ORDER BY featured DESC, published_at DESC NULLS LAST, created_at DESC LIMIT ${limit} OFFSET ${offset}
     `;
@@ -203,8 +277,9 @@ export async function getPostsForLocation(countryId: string, cityId: string | un
 }
 
 export async function countPostsForLocation(countryId: string, cityId?: string, topicSlug?: string) {
+  await ensurePostCategoriesSchema();
   if (cityId && topicSlug) {
-    const rows = await db<{ total: number }[]>`SELECT COUNT(*)::int AS total FROM posts WHERE destination_id = ${cityId} AND category_slug = ${topicSlug} AND status = 'published' AND published_at <= NOW()`;
+    const rows = await db<{ total: number }[]>`SELECT COUNT(*)::int AS total FROM posts WHERE destination_id = ${cityId} AND EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = posts.id AND c.slug = ${topicSlug}) AND status = 'published' AND published_at <= NOW()`;
     return rows[0]?.total ?? 0;
   }
   if (cityId) {
@@ -212,7 +287,7 @@ export async function countPostsForLocation(countryId: string, cityId?: string, 
     return rows[0]?.total ?? 0;
   }
   if (topicSlug) {
-    const rows = await db<{ total: number }[]>`SELECT COUNT(*)::int AS total FROM posts WHERE country_id = ${countryId} AND category_slug = ${topicSlug} AND status = 'published' AND published_at <= NOW()`;
+    const rows = await db<{ total: number }[]>`SELECT COUNT(*)::int AS total FROM posts WHERE country_id = ${countryId} AND EXISTS (SELECT 1 FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id = posts.id AND c.slug = ${topicSlug}) AND status = 'published' AND published_at <= NOW()`;
     return rows[0]?.total ?? 0;
   }
   const rows = await db<{ total: number }[]>`SELECT COUNT(*)::int AS total FROM posts WHERE country_id = ${countryId} AND status = 'published' AND published_at <= NOW()`;
