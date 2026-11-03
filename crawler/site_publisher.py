@@ -293,6 +293,25 @@ def _image_candidates(article: dict) -> list[dict]:
 
 
 
+def _is_promotional_image_metadata(image: dict) -> bool:
+    """Also filter cached legacy image metadata, not just newly extracted DOM images."""
+    url = clean(image.get("original_url") or image.get("url"))
+    path = urlparse(url).path.casefold()
+    if path.endswith((".gif", ".svg", ".ico")):
+        return True
+    text = " ".join((
+        path,
+        clean(image.get("alt")),
+        clean(image.get("caption")),
+        clean(image.get("nearby_heading")),
+    )).casefold()
+    return any(marker in text for marker in (
+        "advertisement", "advertising", "ad-banner", "banner-ad", "sponsored",
+        "sponsor-content", "promotion-banner", "promotional-banner", "/promo/",
+        "/ads/", "/banner/", "/logo/",
+    ))
+
+
 def _stored_image_list(article: dict) -> list[dict]:
     images = article.get("source_images")
     if not isinstance(images, list):
@@ -439,7 +458,7 @@ def _ensure_source_article_images(
         item for item in stored_images
         if item.get("placement_source") in {"og:image_fallback", "rss_image_fallback"}
     ]
-    candidates = body_images or fallback_images
+    candidates = [item for item in (body_images or fallback_images) if not _is_promotional_image_metadata(item)]
 
     source_name = clean(
         article.get("source_name")
