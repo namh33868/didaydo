@@ -24,6 +24,7 @@ STATUS_LABELS = {
     "no_new_articles": ("KHÔNG CÓ BÀI MỚI ĐỂ XỬ LÝ", "#9a6700"),
     "no_relevant_articles": ("KHÔNG CÓ BÀI PHÙ HỢP DANH MỤC", "#9a6700"),
     "no_posts": ("CHƯA XUẤT BẢN ĐƯỢC BÀI", "#b42318"),
+    "fatal_error": ("LỖI HỆ THỐNG KHI XUẤT BẢN", "#b42318"),
     "report_missing": ("KHÔNG TẠO ĐƯỢC BÁO CÁO CRAWLER", "#b42318"),
 }
 
@@ -78,6 +79,10 @@ def _next_step(report: dict, job_status: str) -> str:
     if str(job_status).lower() != "success":
         if report.get("status") == "report_missing":
             return "Crawler dừng trước khi tạo báo cáo. Mở link GitHub Actions để xem bước cấu hình/API nào bị lỗi."
+        if report.get("status") == "fatal_error":
+            reason = str(report.get("fatal_error_reason") or "").strip()
+            detail = f" Chi tiết: {reason}" if reason else ""
+            return "Crawler phải dừng vì lỗi hệ thống ở API xuất bản; các bài tiếp theo chưa được xử lý." + detail + " Kiểm tra log GitHub Actions trước lượt chạy kế tiếp."
         return "Mở log GitHub Actions để xem bước thất bại. Báo cáo nội dung bên dưới chỉ phản ánh phần đã chạy được."
     status = report.get("status")
     if status == "completed":

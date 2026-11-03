@@ -98,9 +98,9 @@ except ValueError:
 # Give full-capacity providers enough room to return a complete editorial article.
 # Groq on-demand is separately bounded to fit its request-level TPM ceiling.
 try:
-    AI_MAX_OUTPUT_TOKENS = max(3000, min(int(os.getenv("AI_MAX_OUTPUT_TOKENS", "9000")), 12000))
+    AI_MAX_OUTPUT_TOKENS = max(3000, min(int(os.getenv("AI_MAX_OUTPUT_TOKENS", "12000")), 12000))
 except ValueError:
-    AI_MAX_OUTPUT_TOKENS = 9000
+    AI_MAX_OUTPUT_TOKENS = 12000
 try:
     GROQ_MAX_OUTPUT_TOKENS = max(
         2048,
@@ -108,6 +108,18 @@ try:
     )
 except ValueError:
     GROQ_MAX_OUTPUT_TOKENS = min(3000, AI_MAX_OUTPUT_TOKENS)
+
+try:
+    AI_PROVIDER_COOLDOWN_SECONDS = max(
+        30, min(int(os.getenv("AI_PROVIDER_COOLDOWN_SECONDS", "120")), 900)
+    )
+except ValueError:
+    AI_PROVIDER_COOLDOWN_SECONDS = 120
+
+# Provider state is scoped to one crawler process. Daily quota/auth failures stay
+# disabled for this run; transient rate limits and truncated output get a cooldown.
+_AI_PROVIDERS_DISABLED_FOR_RUN = {}
+_AI_PROVIDER_COOLDOWN_UNTIL = {}
 
 try:
     AI_MAX_CONSECUTIVE_FAILURES = max(
@@ -912,13 +924,59 @@ def classify_article(article, item=None):
 
 
 def _is_ai_capacity_error(message):
-    """Identify quota, rate-limit, and authentication markers in provider errors."""
+    """Identify quota, rate-limit, authentication, and truncated-output markers."""
     value = clean_text(message).casefold()
     markers = (
         "quota", "resource_exhausted", "429", "rate limit", "rate_limit",
         "too many requests", "insufficient_quota", "tokens per minute",
         "requests per minute", "daily request limit", "billing",
         "invalid api key", "unauthorized", "authentication", "http 401", "http 403",
+        "finish_reason=length", "output token limit", "max_tokens",
+    )
+    return any(marker in value for marker in markers)
+
+
+def _is_ai_daily_quota_error(message):
+    value = clean_text(message).casefold()
+    markers = (
+        "requests per day", "request per day", "per day limit",
+        "daily request limit", "generaterequestsperday",
+        "generate_content_free_tier_requests", "exceeded your current quota",
+        "current quota has been exhausted",
+    )
+    return any(marker in value for marker in markers)
+
+
+def _is_ai_auth_error(message):
+    value = clean_text(message).casefold()
+    markers = (
+        "invalid api key", "unauthorized", "authentication",
+        "http 401", "http 403", "permission denied",
+    )
+    return any(marker in value for marker in markers)
+
+
+def _provider_unavailable_reason(provider_name):
+    disabled_reason = _AI_PROVIDERS_DISABLED_FOR_RUN.get(provider_name)
+    if disabled_reason:
+        return disabled_reason
+    cooldown_until = _AI_PROVIDER_COOLDOWN_UNTIL.get(provider_name)
+    if cooldown_until is None:
+        return ""
+    remaining = cooldown_until - time.monotonic()
+    if remaining <= 0:
+        _AI_PROVIDER_COOLDOWN_UNTIL.pop(provider_name, None)
+        return ""
+    return f"rate-limit cooldown còn khoảng {int(remaining)} giây"
+
+
+def _is_cover_only_publish_failure(message):
+    """A missing/unlicensed cover is an article-level issue, not a broken site API."""
+    value = clean_text(message).casefold()
+    markers = (
+        "cover image", "ảnh đại diện", "giấy phép sử dụng",
+        "không có ảnh", "ảnh hợp lệ", "không tìm được ảnh",
+        "không tìm thấy ảnh", "chưa có ảnh", "ảnh đạt điều kiện",
     )
     return any(marker in value for marker in markers)
 
@@ -1833,26 +1891,55 @@ def _groq_request_input(input_data, max_chars=None):
 def _configured_ai_providers(instructions, input_data):
     """Order: Gemini -> real OpenAI key (if configured) -> Groq -> OpenRouter."""
     providers = []
-    if GEMINI_API_KEY:
-        providers.append(("Gemini", lambda: _call_gemini(instructions, input_data)))
-    if OPENAI_API_KEY:
-        providers.append(("OpenAI", lambda: _call_openai(instructions, input_data)))
-    if GROQ_API_KEY:
+
+    def add_provider(name, configured, request_fn):
+        if not configured:
+            return
+        unavailable_reason = _provider_unavailable_reason(name)
+        if unavailable_reason:
+            log.info("AI provider=%s tạm bỏ qua trong lượt chạy: %s", name, unavailable_reason)
+            return
+        providers.append((name, request_fn))
+
+    add_provider("Gemini", GEMINI_API_KEY, lambda: _call_gemini(instructions, input_data))
+    add_provider("OpenAI", OPENAI_API_KEY, lambda: _call_openai(instructions, input_data))
+
+    if GROQ_API_KEY and not _provider_unavailable_reason("Groq"):
         groq_input = _groq_request_input(input_data)
         log.info(
             "Groq fallback input: source_context_chars=%s (full provider context=%s)",
             groq_input.get("source_reference_chars", 0),
             len(str(input_data.get("source_reference_material") or "")),
         )
-        providers.append(("Groq", lambda: _call_groq(instructions, groq_input)))
-    if OPENROUTER_API_KEY:
-        providers.append(("OpenRouter", lambda: _call_openrouter(instructions, input_data)))
+        add_provider("Groq", True, lambda: _call_groq(instructions, groq_input))
+    elif GROQ_API_KEY:
+        log.info("AI provider=Groq tạm bỏ qua trong lượt chạy: %s", _provider_unavailable_reason("Groq"))
+
+    add_provider("OpenRouter", OPENROUTER_API_KEY, lambda: _call_openrouter(instructions, input_data))
     return providers
 
 
 def _call_json_with_fallback(stage_name, instructions, input_data, validator):
     providers = _configured_ai_providers(instructions, input_data)
     if not providers:
+        configured_names = [
+            name for name, key in (
+                ("Gemini", GEMINI_API_KEY),
+                ("OpenAI", OPENAI_API_KEY),
+                ("Groq", GROQ_API_KEY),
+                ("OpenRouter", OPENROUTER_API_KEY),
+            ) if key
+        ]
+        if configured_names:
+            paused = [
+                f"{name}: {_provider_unavailable_reason(name)}"
+                for name in configured_names
+                if _provider_unavailable_reason(name)
+            ]
+            raise RuntimeError(
+                "Các AI provider đang tạm ngưng trong lượt chạy do quota/rate limit/xác thực: "
+                + "; ".join(paused)
+            )
         raise RuntimeError(
             "Chưa cấu hình AI. Cần GEMINI_API_KEY, OPENAI_API_KEY, GROQ_API_KEY hoặc OPENROUTER_API_KEY."
         )
@@ -1880,8 +1967,22 @@ def _call_json_with_fallback(stage_name, instructions, input_data, validator):
             return result, provider_name, fallback_reason
         except Exception as exc:
             elapsed = time.monotonic() - started
-            message = clean_text(str(exc))[:200]
+            full_error_message = clean_text(str(exc))
+            message = full_error_message[:200]
             errors.append(f"{provider_name}: {type(exc).__name__}: {message}")
+            if _is_ai_daily_quota_error(full_error_message) or _is_ai_auth_error(full_error_message):
+                _AI_PROVIDERS_DISABLED_FOR_RUN[provider_name] = message
+                log.warning(
+                    "AI provider=%s tạm ngừng đến hết lượt chạy do quota ngày/xác thực: %s",
+                    provider_name, message[:180],
+                )
+            elif _is_ai_capacity_error(full_error_message):
+                cooldown_until = time.monotonic() + AI_PROVIDER_COOLDOWN_SECONDS
+                _AI_PROVIDER_COOLDOWN_UNTIL[provider_name] = cooldown_until
+                log.warning(
+                    "AI provider=%s vào cooldown %ss do rate limit/giới hạn đầu ra.",
+                    provider_name, AI_PROVIDER_COOLDOWN_SECONDS,
+                )
             log.warning(
                 "AI stage=%s provider=%s failed elapsed=%.1fs error=%s: %s",
                 stage_name, provider_name, elapsed, type(exc).__name__, message,
@@ -2804,6 +2905,9 @@ def parse_main_args(argv=None):
 
 
 def main(argv=None):
+    # Reset transient provider state for each standalone invocation.
+    _AI_PROVIDERS_DISABLED_FOR_RUN.clear()
+    _AI_PROVIDER_COOLDOWN_UNTIL.clear()
     started_at = time.monotonic()
     args = parse_main_args(argv)
     run_limit = MAX_ARTICLES if args.limit is None else max(1, min(int(args.limit), 10))
@@ -2826,6 +2930,8 @@ def main(argv=None):
     ai_quota_stop = False  # Backward-compatible result key; now means repeated provider failure.
     consecutive_ai_failures = 0
     ai_stop_reason = ""
+    fatal_error = False
+    fatal_error_reason = ""
     published_articles = []
     failure_items = []
 
@@ -2986,10 +3092,7 @@ def main(argv=None):
                     })
                     publish_error = clean_text(site_result.get("error", "lỗi không rõ"))
                     log.error("Chưa xuất bản được bài lên website: %s", publish_error)
-                    cover_only_failure = any(
-                        marker in publish_error.casefold()
-                        for marker in ("cover image", "ảnh đại diện", "giấy phép sử dụng")
-                    )
+                    cover_only_failure = _is_cover_only_publish_failure(publish_error)
                     if cover_only_failure:
                         # One article may have no safe matching image; keep it pending,
                         # but continue discovering other articles instead of stopping today's run.
@@ -2997,6 +3100,9 @@ def main(argv=None):
                     else:
                         # A connection/auth/config error affects every subsequent post.
                         # Stop before spending more AI calls while the publishing endpoint is down.
+                        fatal_error = True
+                        fatal_error_reason = publish_error[:500]
+                        log.error("Lỗi hệ thống xuất bản; dừng trước khi xử lý bài tiếp theo.")
                         break
             else:
                 failed += 1
@@ -3049,6 +3155,14 @@ def main(argv=None):
     return {
         "published_count": published_count,
         "failed": failed,
+        "fatal_error": fatal_error,
+        "fatal_error_reason": fatal_error_reason,
+        "ai_providers_disabled": dict(_AI_PROVIDERS_DISABLED_FOR_RUN),
+        "ai_provider_cooldowns": {
+            name: max(0, int(until - time.monotonic()))
+            for name, until in _AI_PROVIDER_COOLDOWN_UNTIL.items()
+            if until > time.monotonic()
+        },
         "ai_quota_stop": ai_quota_stop,
         "ai_provider_stop": ai_quota_stop,
         "ai_stop_reason": ai_stop_reason,
@@ -3067,5 +3181,5 @@ def main(argv=None):
 
 if __name__ == "__main__":
     result = main()
-    if result and result.get("failed") and not result.get("ai_quota_stop"):
+    if result and result.get("fatal_error"):
         raise SystemExit(1)
