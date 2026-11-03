@@ -87,5 +87,23 @@ class DailyRunnerTests(unittest.TestCase):
             recheck.assert_not_called()
 
 
+    def test_missing_licensed_cover_is_retryable_but_other_errors_are_not(self):
+        missing_cover = RuntimeError(
+            "Bài nguồn không có ảnh hợp lệ và cũng không tìm được ảnh ngoài phù hợp; "
+            "bài được giữ lại."
+        )
+        self.assertTrue(daily_runner._is_retryable_cover_image_error(missing_cover))
+        self.assertTrue(
+            daily_runner._is_retryable_cover_image_error(
+                RuntimeError("Ảnh đại diện không đáp ứng giấy phép sử dụng.")
+            )
+        )
+        self.assertFalse(
+            daily_runner._is_retryable_cover_image_error(
+                RuntimeError("Neon database connection failed")
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

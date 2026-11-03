@@ -37,6 +37,21 @@ def _complete(draft) -> bool:
     )
 
 
+
+
+def _is_retryable_cover_image_error(exc: Exception) -> bool:
+    """Return True when a pending draft only needs a usable cover image."""
+    message = str(exc).casefold()
+    markers = (
+        "cover image",
+        "ảnh đại diện",
+        "giấy phép sử dụng",
+        "bài nguồn không có ảnh hợp lệ",
+        "không tìm được ảnh ngoài phù hợp",
+    )
+    return any(marker in message for marker in markers)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Publish 3-10 complete travel articles per day when sources and AI capacity allow."
@@ -126,8 +141,7 @@ def main():
         try:
             result = site_publisher.sync_draft_to_site(article, draft, db_path)
         except Exception as exc:
-            message = str(exc).casefold()
-            if any(marker in message for marker in ("cover image", "ảnh đại diện", "giấy phép sử dụng")):
+            if _is_retryable_cover_image_error(exc):
                 log.warning(
                     "Bài chờ chưa có ảnh đại diện đạt điều kiện; giữ lại để thử ở lần chạy sau: %s",
                     row.get("source_url"),
