@@ -118,7 +118,7 @@ class ArticleImageRelevanceTests(unittest.TestCase):
         candidates = [
             {"url": "https://example.com/ad-banner.jpg", "title": "Beautiful Kyoto temple", "description": "Kyoto temple", "width": 1600},
             {"url": "https://example.com/animated.gif", "title": "Kyoto temple", "description": "Kyoto temple", "width": 1600},
-            {"url": "https://example.com/kyoto-temple.jpg", "title": "Kyoto temple", "description": "Historic Kyoto temple", "width": 1600},
+            {"url": "https://example.com/kyoto-temple.jpg", "title": "Kyoto temple", "description": "Historic Kyoto Japan temple", "width": 1600},
         ]
         ranked = _rank_candidates(
             candidates, ["Kyoto"], ["Japan"], ["temple"],
