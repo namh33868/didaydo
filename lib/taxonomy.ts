@@ -34,7 +34,10 @@ export async function setPostCategories(postId: string, names: string[], primary
   await ensurePostCategoriesSchema();
   const uniqueNames = [...new Set((names || []).map((name) => name.trim()).filter(Boolean))].slice(0, 12);
   const topics: { id: string; name: string; slug: string }[] = [];
-  for (const name of uniqueNames) topics.push(await ensureTopic(name));
+  for (const name of uniqueNames) {
+    const topic = await ensureTopic(name);
+    if (topic) topics.push(topic);
+  }
   const primarySlug = topics.find((topic) => topic.name === (primaryName || uniqueNames[0]))?.slug || topics[0]?.slug;
   await db.begin(async (tx) => {
     await tx`DELETE FROM post_categories WHERE post_id = ${postId}::uuid`;
