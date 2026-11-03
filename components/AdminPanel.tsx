@@ -7,7 +7,7 @@ import { EDITORIAL_CATEGORIES, normalizeEditorialCategory } from "@/lib/editoria
 
 type AdminPost = {
   id: string; title: string; slug: string; excerpt: string; contentHtml: string; coverImage: string; coverAlt: string;
-  category: string; country: string; destination: string; coverCredit: string; tags: string[]; status: "draft" | "published" | "archived"; featured: boolean; featuredUntil: string | null; authorName: string;
+  category: string; categories: string[]; country: string; destination: string; coverCredit: string; tags: string[]; status: "draft" | "published" | "archived"; featured: boolean; featuredUntil: string | null; authorName: string;
   sourceUrl: string; sourceName: string; seoTitle: string; seoDescription: string; publishedAt: string | null; createdAt: string;
 };
 type IngestLog = { id: string; source: string; received_count: number; created_count: number; updated_count: number; failed_count: number; status: string; createdAt: string };
@@ -18,10 +18,10 @@ const roleLabel: Record<AdminRole, string> = { admin: "Quản trị viên", edit
 type Editor = Omit<AdminPost, "id" | "publishedAt" | "createdAt" | "featuredUntil"> & { id?: string }
 type PreviewPost = Editor & { publishedAt?: string | null; createdAt?: string };
 const siteName = process.env.NEXT_PUBLIC_SITE_NAME || "Đi Đây Đó";
-const emptyEditor: Editor = { title: "", slug: "", excerpt: "", contentHtml: "", coverImage: "", coverAlt: "", category: "Cẩm nang", country: "", destination: "", coverCredit: "", tags: [], status: "draft", featured: false, authorName: "Ban biên tập", sourceUrl: "", sourceName: "", seoTitle: "", seoDescription: "" };
+const emptyEditor: Editor = { title: "", slug: "", excerpt: "", contentHtml: "", coverImage: "", coverAlt: "", category: "Cẩm nang", categories: ["Cẩm nang"], country: "", destination: "", coverCredit: "", tags: [], status: "draft", featured: false, authorName: "Ban biên tập", sourceUrl: "", sourceName: "", seoTitle: "", seoDescription: "" };
 
 function editorFromPost(post: AdminPost): Editor {
-  return { id: post.id, title: post.title, slug: post.slug, excerpt: post.excerpt, contentHtml: post.contentHtml, coverImage: post.coverImage, coverAlt: post.coverAlt, coverCredit: post.coverCredit || "", category: normalizeEditorialCategory(post.category).name, country: post.country || "", destination: post.destination || "", tags: post.tags || [], status: post.status, featured: post.featured, authorName: post.authorName, sourceUrl: post.sourceUrl || "", sourceName: post.sourceName, seoTitle: post.seoTitle, seoDescription: post.seoDescription };
+  return { id: post.id, title: post.title, slug: post.slug, excerpt: post.excerpt, contentHtml: post.contentHtml, coverImage: post.coverImage, coverAlt: post.coverAlt, coverCredit: post.coverCredit || "", category: normalizeEditorialCategory(post.category).name, categories: post.categories?.length ? post.categories : [normalizeEditorialCategory(post.category).name], country: post.country || "", destination: post.destination || "", tags: post.tags || [], status: post.status, featured: post.featured, authorName: post.authorName, sourceUrl: post.sourceUrl || "", sourceName: post.sourceName, seoTitle: post.seoTitle, seoDescription: post.seoDescription };
 }
 
 // Browser-side allowlist for the preview. This protects the unsaved editor HTML
@@ -131,7 +131,7 @@ export function AdminPanel() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewing]);
 
-  const filtered = posts.filter((post) => (filter === "all" || post.status === filter) && `${post.title} ${post.category} ${post.country} ${post.destination}`.toLowerCase().includes(query.toLowerCase()));
+  const filtered = posts.filter((post) => (filter === "all" || post.status === filter) && `${post.title} ${post.category} ${(post.categories || []).join(" ")} ${post.country} ${post.destination}`.toLowerCase().includes(query.toLowerCase()));
   const allFilteredSelected = filtered.length > 0 && filtered.every((post) => selectedPostIds.includes(post.id));
   const publishedCount = posts.filter((p) => p.status === "published").length;
   const draftCount = posts.filter((p) => p.status === "draft").length;
@@ -147,7 +147,7 @@ export function AdminPanel() {
   });
   const featuredCount = publishedPosts.filter((post) => post.featured && !!post.featuredUntil && new Date(post.featuredUntil).getTime() > currentTime).length;
   const featuredChoices = publishedPosts
-    .filter((post) => `${post.title} ${post.category} ${post.country} ${post.destination}`.toLowerCase().includes(featuredQuery.toLowerCase()))
+    .filter((post) => `${post.title} ${post.category} ${(post.categories || []).join(" ")} ${post.country} ${post.destination}`.toLowerCase().includes(featuredQuery.toLowerCase()))
     .slice(0, featuredQuery.trim() ? 200 : 60);
 
   async function save(statusOverride?: Editor["status"]) {
@@ -250,6 +250,18 @@ export function AdminPanel() {
 
   function update<K extends keyof Editor>(key: K, value: Editor[K]) { setSelected((current) => current ? { ...current, [key]: value } : current); }
 
+  function toggleCategory(name: string, checked: boolean) {
+    setSelected((current) => {
+      if (!current) return current;
+      const existing = current.categories?.length ? current.categories : [current.category];
+      const next = checked
+        ? [...existing.filter((item) => item !== name), name]
+        : existing.filter((item) => item !== name);
+      const categories = next.length ? next : existing;
+      return { ...current, categories, category: categories[0] || current.category };
+    });
+  }
+
   return <div className="admin-shell">
     <aside className="admin-sidebar"><a href="/" className="admin-logo"><span className="brand-mark">ĐĐ</span><span><b>{siteName}</b><small>STUDIO / CMS</small></span></a><div className="admin-side-label">NỘI DUNG</div><a className="admin-side-link active" href="/admin"><Pencil size={17} /> Bài viết <span>{posts.length}</span></a>{canPublish && <a className="admin-side-link" href="/admin/bao-cao-ban-quyen"><ShieldAlert size={17}/> Yêu cầu gỡ nội dung</a>}{currentUser?.role === "admin" && <a className="admin-side-link" href="/admin/phan-quyen"><ShieldCheck size={17}/> Tài khoản & phân quyền</a>}<a className="admin-side-link" href="/" target="_blank" rel="noreferrer"><ExternalLink size={17} /> Xem website</a><div className="admin-sidebar-bottom"><div className="admin-user-mark">{(currentUser?.fullName || "Q").slice(0, 1).toUpperCase()}</div><div className="admin-user-text"><b>{currentUser?.fullName || "Đang tải..."}</b><small>{currentUser ? roleLabel[currentUser.role] : "Tài khoản CMS"}</small></div><button onClick={logout} title="Đăng xuất" aria-label="Đăng xuất"><LogOut size={17}/></button></div></aside>
     <main className="admin-main">
@@ -284,7 +296,7 @@ export function AdminPanel() {
             <button type="button" className="admin-bulk-action is-archive" onClick={() => void bulkSetStatus("archived")} disabled={bulkBusy}><Archive size={14}/>Lưu trữ</button>
           </div>
         </div>}
-        <div className="admin-table-scroll"><table className="admin-table"><thead><tr>{canPublish && <th className="admin-select-cell"><input className="admin-row-checkbox" type="checkbox" checked={allFilteredSelected} onChange={(event) => toggleAllFiltered(event.target.checked)} aria-label="Chọn tất cả bài viết đang hiển thị" title="Chọn tất cả bài viết đang hiển thị"/></th>}<th>Bài viết</th><th>Danh mục</th><th>Trạng thái</th><th>Ngày đăng</th><th><span className="sr-only">Thao tác</span></th></tr></thead><tbody>{filtered.map((post) => <tr key={post.id}>{canPublish && <td className="admin-select-cell"><input className="admin-row-checkbox" type="checkbox" checked={selectedPostIds.includes(post.id)} onChange={(event) => togglePostSelection(post.id, event.target.checked)} aria-label={`Chọn bài ${post.title}`}/></td>}<td><div className="admin-post-title"><div className="admin-thumb">{post.coverImage ? <img src={post.coverImage} alt=""/> : <span>ĐĐ</span>}</div><div><b>{post.title}</b><small>/{post.slug}</small>{(post.country || post.destination) && <small>{[post.country, post.destination].filter(Boolean).join(" / ")}</small>}{post.featured && <em>Nổi bật</em>}</div></div></td><td><span className="table-category">{post.category}</span></td><td><span className={`status-pill status-${post.status}`}>{post.status === "published" ? "Đã xuất bản" : post.status === "draft" ? "Bản nháp" : "Đã lưu trữ"}</span></td><td>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString("vi-VN") : "—"}</td><td><div className="table-actions"><button title="Xem trước bài" aria-label={`Xem trước ${post.title}`} onClick={() => setPreviewing({ ...editorFromPost(post), publishedAt: post.publishedAt, createdAt: post.createdAt })}><Eye size={15}/></button>{canCreate && <button title="Sửa bài" aria-label={`Sửa ${post.title}`} onClick={() => { setSelected(editorFromPost(post)); setError(""); setMessage(""); }}><Pencil size={15}/></button>}{canDelete && <button title="Xóa bài" aria-label={`Xóa ${post.title}`} onClick={() => void removePost(post)}><Trash2 size={15}/></button>}</div></td></tr>)}{filtered.length === 0 && <tr><td colSpan={canPublish ? 6 : 5} className="admin-empty">{busy ? "Đang tải nội dung..." : "Chưa tìm thấy bài viết phù hợp."}</td></tr>}</tbody></table></div>
+        <div className="admin-table-scroll"><table className="admin-table"><thead><tr>{canPublish && <th className="admin-select-cell"><input className="admin-row-checkbox" type="checkbox" checked={allFilteredSelected} onChange={(event) => toggleAllFiltered(event.target.checked)} aria-label="Chọn tất cả bài viết đang hiển thị" title="Chọn tất cả bài viết đang hiển thị"/></th>}<th>Bài viết</th><th>Danh mục</th><th>Trạng thái</th><th>Ngày đăng</th><th><span className="sr-only">Thao tác</span></th></tr></thead><tbody>{filtered.map((post) => <tr key={post.id}>{canPublish && <td className="admin-select-cell"><input className="admin-row-checkbox" type="checkbox" checked={selectedPostIds.includes(post.id)} onChange={(event) => togglePostSelection(post.id, event.target.checked)} aria-label={`Chọn bài ${post.title}`}/></td>}<td><div className="admin-post-title"><div className="admin-thumb">{post.coverImage ? <img src={post.coverImage} alt=""/> : <span>ĐĐ</span>}</div><div><b>{post.title}</b><small>/{post.slug}</small>{(post.country || post.destination) && <small>{[post.country, post.destination].filter(Boolean).join(" / ")}</small>}{post.featured && <em>Nổi bật</em>}</div></div></td><td><div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>{(post.categories?.length ? post.categories : [post.category]).map((category) => <span className="table-category" key={category}>{category}</span>)}</div></td><td><span className={`status-pill status-${post.status}`}>{post.status === "published" ? "Đã xuất bản" : post.status === "draft" ? "Bản nháp" : "Đã lưu trữ"}</span></td><td>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString("vi-VN") : "—"}</td><td><div className="table-actions"><button title="Xem trước bài" aria-label={`Xem trước ${post.title}`} onClick={() => setPreviewing({ ...editorFromPost(post), publishedAt: post.publishedAt, createdAt: post.createdAt })}><Eye size={15}/></button>{canCreate && <button title="Sửa bài" aria-label={`Sửa ${post.title}`} onClick={() => { setSelected(editorFromPost(post)); setError(""); setMessage(""); }}><Pencil size={15}/></button>}{canDelete && <button title="Xóa bài" aria-label={`Xóa ${post.title}`} onClick={() => void removePost(post)}><Trash2 size={15}/></button>}</div></td></tr>)}{filtered.length === 0 && <tr><td colSpan={canPublish ? 6 : 5} className="admin-empty">{busy ? "Đang tải nội dung..." : "Chưa tìm thấy bài viết phù hợp."}</td></tr>}</tbody></table></div>
         <div className="admin-table-foot">Hiển thị {filtered.length} / {posts.length} bài viết <span>{canPublish ? "Có thể chọn nhiều bài để thay đổi trạng thái cùng lúc." : "Nội dung do AI gửi vào sẽ xuất hiện tại đây."}</span></div>
       </section>
       {canViewIngest && <section className="admin-table-card ingest-history"><div className="admin-table-toolbar"><div><h2>Lịch sử đồng bộ Crawl + AI</h2><p>Những lượt gửi dữ liệu gần nhất được ghi nhận từ API.</p></div><span className="status-pill status-published">API-first</span></div><div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Thời gian</th><th>Nguồn</th><th>Đã nhận</th><th>Tạo mới</th><th>Cập nhật</th><th>Lỗi</th><th>Trạng thái</th></tr></thead><tbody>{ingestLogs.map((log) => <tr key={log.id}><td>{new Date(log.createdAt).toLocaleString("vi-VN")}</td><td>{log.source}</td><td>{log.received_count}</td><td>{log.created_count}</td><td>{log.updated_count}</td><td>{log.failed_count}</td><td><span className={`status-pill ${log.failed_count ? "status-draft" : "status-published"}`}>{log.failed_count ? "Có lỗi" : "Thành công"}</span></td></tr>)}{ingestLogs.length === 0 && <tr><td colSpan={7} className="admin-empty">Chưa có lượt đồng bộ nào. Lịch sử sẽ xuất hiện khi crawler gửi bài đầu tiên.</td></tr>}</tbody></table></div><div className="admin-table-foot"><span>Giữ tối đa 8 lượt gần nhất trên màn hình này; log đầy đủ nằm trong database.</span><code>POST /api/ingest/posts</code></div></section>}
@@ -329,7 +341,17 @@ export function AdminPanel() {
 
             <section className="editor-panel-card editor-side-card">
               <div className="editor-side-card-heading"><h3>Chuyên mục</h3></div>
-              <label className="editor-field"><span>Chủ đề / danh mục</span><select value={normalizeEditorialCategory(selected.category).slug} onChange={(e) => update("category", EDITORIAL_CATEGORIES.find((item) => item.slug === e.target.value)?.name || "Cẩm nang")}>{EDITORIAL_CATEGORIES.map((item) => <option value={item.slug} key={item.slug}>{item.name}</option>)}</select></label>
+              <div className="editor-field">
+                <span>Chủ đề / danh mục</span>
+                <div style={{ display: "grid", gap: "9px", maxHeight: "250px", overflowY: "auto", padding: "4px 0" }}>
+                  {EDITORIAL_CATEGORIES.map((item) => <label key={item.slug} style={{ display: "flex", alignItems: "center", gap: "9px", fontWeight: 500 }}>
+                    <input type="checkbox" checked={(selected.categories || [selected.category]).includes(item.name)} onChange={(event) => toggleCategory(item.name, event.target.checked)} />
+                    <span>{item.name}</span>
+                    {selected.categories?.[0] === item.name && <small style={{ marginLeft: "auto" }}>Chính</small>}
+                  </label>)}
+                </div>
+                <small>Chọn nhiều danh mục phù hợp. Danh mục đầu tiên là danh mục chính của bài viết.</small>
+              </div>
               <label className="editor-field"><span>Tags (cách nhau bằng dấu phẩy)</span><input value={selected.tags.join(", ")} onChange={(e) => update("tags", e.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))} placeholder="Đà Nẵng, du lịch biển"/><small>Giúp nhóm chủ đề liên quan.</small></label>
             </section>
 
@@ -373,9 +395,9 @@ export function AdminPanel() {
         <div className="admin-preview-viewport">
           <div className="admin-preview-masthead"><a href="/" className="admin-preview-brand" onClick={(event) => event.preventDefault()}><span className="brand-mark">ĐĐ</span><span><b>{siteName}</b><small>DU LỊCH · ẨM THỰC · TRẢI NGHIỆM</small></span></a><span className="admin-preview-masthead-note">TẠP CHÍ DU LỊCH</span></div>
           <main className="admin-preview-page">
-            <div className="admin-preview-breadcrumb">Trang chủ <span>/</span> {previewing.country || "Khám phá"}{previewing.destination ? ` / ${previewing.destination}` : ""} <span>/</span> {previewing.category}</div>
+            <div className="admin-preview-breadcrumb">Trang chủ <span>/</span> {previewing.country || "Khám phá"}{previewing.destination ? ` / ${previewing.destination}` : ""} <span>/</span> {(previewing.categories || [previewing.category]).join(" · ")}</div>
             <article className="admin-preview-article">
-              <header className="admin-preview-article-header"><span className="category-label">{previewing.category || "Cẩm nang"}</span><h1>{previewing.title || "Tiêu đề bài viết"}</h1>{previewing.excerpt && <p className="article-deck">{previewing.excerpt}</p>}
+              <header className="admin-preview-article-header"><div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>{(previewing.categories?.length ? previewing.categories : [previewing.category || "Cẩm nang"]).map((category) => <span className="category-label" key={category}>{category}</span>)}</div><h1>{previewing.title || "Tiêu đề bài viết"}</h1>{previewing.excerpt && <p className="article-deck">{previewing.excerpt}</p>}
                 <div className="admin-preview-byline"><span className="author-avatar">ĐĐ</span><div><b>{previewing.authorName || "Ban biên tập"}</b><span>{formatPreviewDate(previewing.publishedAt || previewing.createdAt)}</span></div><span className="admin-preview-reading-time">{Math.max(1, Math.ceil((previewing.contentHtml.replace(/<[^>]*>/g, " ").trim().split(/\s+/).filter(Boolean).length || 1) / 220))} phút đọc</span></div>
               </header>
               {previewing.coverImage && <figure className="admin-preview-cover"><img src={previewing.coverImage} alt={previewing.coverAlt || previewing.title || "Ảnh đại diện bài viết"}/><figcaption>{previewing.coverAlt || previewing.title}{previewing.coverCredit ? ` · ${previewing.coverCredit}` : ""}</figcaption></figure>}

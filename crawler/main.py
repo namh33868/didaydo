@@ -1192,6 +1192,41 @@ def _nearest_image_wrapper(image_tag, container):
     return image_tag.parent
 
 
+def _is_promotional_or_decorative_image(image_tag, image_url):
+    """Reject GIFs, ad creatives, tracking assets and tiny decorative images."""
+    parsed = urlparse(clean_text(image_url))
+    path = (parsed.path or "").casefold()
+    if path.endswith((".gif", ".svg", ".ico")):
+        return True
+
+    fragments = [path, clean_text(image_tag.get("alt", ""))]
+    for node in [image_tag, *list(image_tag.parents)[:4]]:
+        if getattr(node, "attrs", None):
+            fragments.extend([
+                clean_text(node.get("id", "")),
+                clean_text(node.get("class", "")),
+                clean_text(node.get("aria-label", "")),
+            ])
+    markers = re.compile(
+        r"(^|[^a-z0-9])(?:ad|ads|advert|advertisement|banner|sponsor(?:ed)?|promo(?:tion)?|"
+        r"tracking|pixel|spacer|logo|avatar|site[-_ ]?icon)(?:$|[^a-z0-9])",
+        re.IGNORECASE,
+    )
+    if markers.search(" ".join(fragments)):
+        return True
+
+    try:
+        width = int(image_tag.get("width") or 0)
+        height = int(image_tag.get("height") or 0)
+    except (TypeError, ValueError):
+        width = height = 0
+    if width and height:
+        ratio = width / max(1, height)
+        if width < 420 or height < 220 or ratio > 3.1 or ratio < 0.42:
+            return True
+    return False
+
+
 def _extract_article_images(container, article_url, soup, article_footer_credit=""):
     """Trích ảnh theo thứ tự DOM, cùng alt/caption/credit và vị trí tương đối trong bài."""
     images = []
@@ -1204,9 +1239,13 @@ def _extract_article_images(container, article_url, soup, article_footer_credit=
         total_images = max(1, len(img_tags))
         for index, image_tag in enumerate(img_tags, start=1):
             src = _absolute_image_url(image_tag, article_url)
-            if not src or src in seen:
+            if not src or _is_promotional_or_decorative_image(image_tag, src):
                 continue
-            seen.add(src)
+            parsed_src = urlparse(src)
+            dedupe_key = f"{(parsed_src.hostname or '').casefold()}{parsed_src.path.casefold()}"
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
             wrapper = _nearest_image_wrapper(image_tag, container)
             caption_node = None
             if wrapper and wrapper is not image_tag.parent:
@@ -1267,7 +1306,7 @@ def _extract_article_images(container, article_url, soup, article_footer_credit=
                 "source_page_url": article_url,
                 "placement_source": "og:image_fallback",
             })
-    return images[:20]
+    return images[:12]
 
 def _find_article_container(soup):
     """Find the article DOM container from structural selectors, without extracting prose."""
@@ -1566,7 +1605,8 @@ def _ai_instructions_and_input(article):
     }
     instructions = """
 Bạn là biên tập viên cấp cao của một trang nội dung du lịch tiếng Việt.
-Hãy viết một bài biên tập độc lập bằng tiếng Việt từ hồ sơ metadata, danh mục ảnh và TƯ LIỆU THAM KHẢO nếu có.
+Hãy viết một bài biên tập độc lập hoàn toàn bằng tiếng Việt từ hồ sơ metadata, danh mục ảnh và TƯ LIỆU THAM KHẢO nếu có.
+BẮT BUỘC: mọi phần chữ hiển thị công khai — tiêu đề, sapo, heading, đoạn văn và meta description — phải viết bằng tiếng Việt tự nhiên. Không được để nguyên câu hoặc đoạn tiếng Anh từ nguồn. Chỉ giữ nguyên tên riêng, tên thương hiệu, tên địa danh và thuật ngữ không có cách dịch phù hợp; giải thích thuật ngữ tiếng Anh bằng tiếng Việt ở lần xuất hiện đầu tiên.
 Nếu input có source_reference_material, hãy dùng nó để lấy các dữ kiện có thể kiểm tra (địa điểm, đặc điểm, lịch trình, điều kiện, lưu ý, số liệu và nguồn quy định), nhưng tuyệt đối không dịch nguyên văn hoặc diễn đạt lại theo từng đoạn.
 
 NGUYÊN TẮC NGUYÊN GỐC
@@ -1697,6 +1737,39 @@ def _parse_source_fact_sheet(raw, provider):
         "brief": clean_text(data.get("brief", ""))[:400],
     }
 
+_ENGLISH_FUNCTION_WORDS = {
+    "the", "and", "for", "with", "from", "this", "that", "these", "those",
+    "are", "is", "was", "were", "been", "being", "have", "has", "had",
+    "you", "your", "they", "their", "them", "there", "here", "which",
+    "what", "when", "where", "why", "how", "who", "will", "would",
+    "could", "should", "can", "may", "might", "must", "not", "but",
+    "about", "into", "over", "under", "between", "after", "before",
+    "than", "then", "also", "more", "most", "some", "many", "each",
+    "best", "top", "guide", "travel", "visit", "discover", "explore",
+}
+
+
+def _english_text_signal(value):
+    plain = clean_text(BeautifulSoup(str(value or ""), "html.parser").get_text(" "))
+    words = re.findall(r"[a-z]+", plain.casefold())
+    hits = [word for word in words if word in _ENGLISH_FUNCTION_WORDS]
+    return len(hits), len(words)
+
+
+def _validate_vietnamese_output(seo_title, meta_description, content):
+    title_hits, title_words = _english_text_signal(seo_title)
+    body_hits, body_words = _english_text_signal(f"{meta_description} {content}")
+    if title_words >= 3 and title_hits >= 2 and title_hits / title_words >= 0.18:
+        raise ValueError("AI còn để tiêu đề/meta tiếng Anh; yêu cầu viết lại bằng tiếng Việt")
+    if body_words >= 80 and body_hits >= 6 and body_hits / body_words >= 0.025:
+        raise ValueError("AI còn để nội dung tiếng Anh; bài bị giữ lại để thử provider khác")
+    soup = BeautifulSoup(str(content or ""), "html.parser")
+    for block in soup.find_all(["p", "h2", "h3", "h4", "li", "blockquote"]):
+        block_hits, block_words = _english_text_signal(block.get_text(" ", strip=True))
+        if block_words >= 5 and block_hits >= 3 and block_hits / block_words >= 0.20:
+            raise ValueError("AI còn để đoạn tiếng Anh trong bài; không được xuất bản khi chưa Việt hóa toàn bộ")
+
+
 def _parse_and_validate_ai_draft(raw, provider):
     data = _load_json_object(raw, provider, "article-writing")
 
@@ -1719,6 +1792,8 @@ def _parse_and_validate_ai_draft(raw, provider):
             for attr in list(tag.attrs):
                 del tag.attrs[attr]
     content = str(soup)
+    meta_description = clean_text(data.get("meta_description", ""))[:500]
+    _validate_vietnamese_output(seo_title, meta_description, content)
 
     secondary = data.get("secondary_keywords", [])
     facts = data.get("source_facts_used", [])
@@ -1729,7 +1804,7 @@ def _parse_and_validate_ai_draft(raw, provider):
 
     return {
         "seo_title": seo_title[:200],
-        "seo_description": clean_text(data.get("meta_description", ""))[:500],
+        "seo_description": meta_description,
         "seo_content": content[:30000],
         "primary_keyword": clean_text(data.get("primary_keyword", ""))[:150],
         "secondary_keywords": json.dumps(
@@ -2025,21 +2100,11 @@ def _render_inline_image_html(image):
     if SOURCE_IMAGE_REUSE_AUTHORIZED:
         if not source_url.startswith(("https://", "http://")):
             return f"<figure><figcaption>[{html_escape(image_id)} — URL ảnh không hợp lệ, cần kiểm tra]</figcaption></figure>"
-        caption_parts = []
-        if caption:
-            caption_parts.append(html_escape(caption))
-        if credit:
-            caption_parts.append("Ảnh: " + html_escape(credit))
-        else:
-            source_name = clean_text(image.get("source_name") or "nguồn tham khảo")
-            caption_parts.append("Nguồn ảnh: " + html_escape(source_name) + "; chưa xác định người chụp")
-        if source_page:
-            caption_parts.append(f'<a href="{html_escape(source_page, quote=True)}" rel="nofollow">Nguồn</a>')
-        figcaption = "<figcaption>" + " · ".join(caption_parts) + "</figcaption>" if caption_parts else ""
+        # Keep attribution in crawler metadata, never in the public article body.
         return (
             '<figure class="article-inline-image">'
-            f'<img src="{html_escape(source_url, quote=True)}" alt="{html_escape(alt, quote=True)}" loading="lazy" />'
-            f'{figcaption}</figure>'
+            f'<img src="{html_escape(source_url, quote=True)}" alt="{html_escape(alt, quote=True)}" loading="lazy" decoding="async" />'
+            '</figure>'
         )
 
     # Safe by default: retain the inline slot, credit and URL for editorial review,
@@ -2063,6 +2128,11 @@ def _insert_inline_images(article, draft):
     SOURCE_IMAGE_REUSE_AUTHORIZED=true is explicitly set by the operator.
     """
     images = _image_list_from_article(article)
+    try:
+        max_inline_images = max(1, min(int(os.getenv("SOURCE_ARTICLE_MAX_IMAGES", "4")), 6))
+    except ValueError:
+        max_inline_images = 4
+    images = images[:max_inline_images]
     content = draft.get("seo_content", "") or ""
     if not images or not content:
         return draft

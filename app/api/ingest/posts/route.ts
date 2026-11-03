@@ -5,7 +5,7 @@ import { slugify } from "@/lib/format";
 import { cleanArticleHtml } from "@/lib/sanitize";
 import { contentToHtml, normalizeIngestPayload } from "@/lib/content";
 import { ingestSchema, type PostInput } from "@/lib/validation";
-import { ensureDestination, ensureTopic } from "@/lib/taxonomy";
+import { ensureDestination, ensureTopic, setPostCategories } from "@/lib/taxonomy";
 
 export const runtime = "nodejs";
 
@@ -121,7 +121,7 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
   if (!incomingContent.trim()) {
     throw new Error("Article content is empty.");
   }
-  const contentHtml = cleanArticleHtml(contentToHtml(incomingContent));
+  const contentHtml = cleanArticleHtml(stripPublicImageAttribution(contentToHtml(incomingContent)));
   const status = resolveIngestStatus(input.status, existing?.status, autoPublish);
   const publishedAt: Date | null = status === "published"
     ? existing?.published_at || new Date()
@@ -130,10 +130,12 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
       : null;
 
   // Avoid erasing editorial metadata when a crawler retry omits optional fields.
-  const requestedCategory = input.category?.trim();
+  const requestedCategories = input.categories?.length ? input.categories : [];
+  const requestedCategory = requestedCategories[0]?.trim() || input.category?.trim();
   const categoryName = requestedCategory && (requestedCategory !== "Cẩm nang" || !existing?.category_name)
     ? requestedCategory
     : existing?.category_name || requestedCategory || "Cẩm nang";
+  const categoryNames = [...new Set([categoryName, ...requestedCategories.slice(1)].map((name) => name.trim()).filter(Boolean))].slice(0, 12);
   const topic = await ensureTopic(categoryName);
   const categorySlug = topic.slug || slugify(categoryName);
 
@@ -181,6 +183,7 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
       WHERE id = ${existing.id} RETURNING id, slug, status
     `;
     if (!rows[0]) throw new Error("Post update returned no row.");
+    await setPostCategories(rows[0].id, categoryNames, categoryName);
     return { kind: "updated" as const, ...rows[0] };
   }
 
@@ -200,6 +203,7 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
     RETURNING id, slug, status
   `;
   if (!rows[0]) throw new Error("Post insert returned no row.");
+  await setPostCategories(rows[0].id, categoryNames, categoryName);
   return { kind: "created" as const, ...rows[0] };
 }
 
@@ -220,6 +224,17 @@ function stripPublicImageAttribution(html: string): string {
       "credit:",
       "courtesy of",
       "tác giả ảnh",
+      "photo:",
+      "photo credit",
+      "photograph by",
+      "image by",
+      "source:",
+      "licensed under",
+      "creativecommons",
+      "cc by",
+      "provided by",
+      "copyright",
+      "ảnh được cung cấp bởi",
     ];
     const hasPrivateImageUrl = /https?:\/\//i.test(caption);
     return hasPrivateImageUrl || privateMarkers.some((marker) => visibleText.includes(marker))

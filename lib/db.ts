@@ -24,6 +24,7 @@ export type PostRecord = {
   cover_credit: string;
   category_name: string;
   category_slug: string;
+  categories?: { name: string; slug: string }[];
   country_id: string | null;
   country_name: string;
   country_slug: string;

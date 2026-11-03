@@ -49,8 +49,9 @@ function makeArticleBody(html: string) {
   const withoutImageAttribution = html.replace(/<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi, (caption) => {
     const text = caption.replace(/<[^>]*>/g, " ").toLocaleLowerCase("vi");
     const privateImageMarkers = [
-      "nguồn ảnh", "giấy phép", "ảnh:", "photo by", "image credit",
-      "credit:", "courtesy of",
+      "nguồn ảnh", "giấy phép", "ảnh:", "photo by", "photo:", "photo credit",
+      "image credit", "image by", "photograph by", "source:", "credit:",
+      "courtesy of", "licensed under", "creativecommons", "cc by", "provided by", "copyright",
     ];
     return privateImageMarkers.some((item) => text.includes(item)) ? "" : caption;
   });
@@ -85,7 +86,8 @@ export default async function ArticlePage({ params }: Props) {
     datePublished: post.published_at?.toISOString(), dateModified: post.updated_at.toISOString(),
     author: { "@type": "Organization", name: post.author_name || "Ban biên tập" },
     publisher: { "@type": "Organization", name: siteName, url: absoluteUrl("/") },
-    mainEntityOfPage: articleUrl, inLanguage: "vi-VN", articleSection: post.category_name,
+    mainEntityOfPage: articleUrl, inLanguage: "vi-VN",
+    articleSection: (post.categories || [{ name: post.category_name }]).map((category) => category.name),
     keywords: post.tags.join(", "), isAccessibleForFree: true,
   };
   const breadcrumbItems: { label: string; href?: string }[] = [
@@ -115,7 +117,7 @@ export default async function ArticlePage({ params }: Props) {
         <article className="article-main">
           <header className="article-header">
             <div className="article-taxonomy">
-              <Link className="category-label" href={`/chuyen-muc/${post.category_slug}`}>{post.category_name}</Link>
+              {(post.categories?.length ? post.categories : [{ name: post.category_name, slug: post.category_slug }]).map((category) => <Link className="category-label" href={`/chuyen-muc/${category.slug}`} key={category.slug}>{category.name}</Link>)}
               {(post.country_name && post.country_slug) && <span className="article-place"><MapPin size={13}/><Link href={locationHref(post.country_slug)}>{post.country_name}</Link>{post.destination_name && post.destination_slug && <><span className="place-separator">/</span><Link href={locationHref(post.country_slug, post.destination_slug)}>{post.destination_name}</Link></>}</span>}
             </div>
             <h1>{post.title}</h1>
@@ -145,7 +147,7 @@ export default async function ArticlePage({ params }: Props) {
         <aside className="article-sidebar">
           {article.toc.length > 1 && <div className="sidebar-block"><h2>Trong bài viết</h2><ul className="toc-list">{article.toc.map((item) => <li key={item.id} style={{ paddingLeft: item.level === 3 ? 12 : 0 }}><a href={`#${item.id}`}>{item.title}</a></li>)}</ul></div>}
           <div className="sidebar-block"><h2>Bài viết cùng chủ đề</h2>{related.slice(0, 3).map((item) => <PostCard key={item.id} post={item} variant="compact" />)}</div>
-          <div className="sidebar-block"><h2>Khám phá tiếp</h2><p className="article-sidebar-note">Đi sâu hơn vào điểm đến hoặc tìm thêm những câu chuyện cùng mối quan tâm.</p>{post.country_name && post.country_slug && <Link href={locationHref(post.country_slug)} className="sidebar-category">{post.country_name}<span>↗</span></Link>}<Link href={`/chuyen-muc/${post.category_slug}`} className="sidebar-category">{post.category_name}<span>↗</span></Link></div>
+          <div className="sidebar-block"><h2>Khám phá tiếp</h2><p className="article-sidebar-note">Đi sâu hơn vào điểm đến hoặc tìm thêm những câu chuyện cùng mối quan tâm.</p>{post.country_name && post.country_slug && <Link href={locationHref(post.country_slug)} className="sidebar-category">{post.country_name}<span>↗</span></Link>}{(post.categories?.length ? post.categories : [{ name: post.category_name, slug: post.category_slug }]).map((category) => <Link href={`/chuyen-muc/${category.slug}`} className="sidebar-category" key={category.slug}>{category.name}<span>↗</span></Link>)}</div>
         </aside>
       </div>
 

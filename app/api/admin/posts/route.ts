@@ -5,7 +5,7 @@ import { slugify } from "@/lib/format";
 import { cleanArticleHtml } from "@/lib/sanitize";
 import { contentToHtml } from "@/lib/content";
 import { adminPostSchema } from "@/lib/validation";
-import { ensureDestination, ensureTopic } from "@/lib/taxonomy";
+import { ensureDestination, ensureTopic, getPostCategoryMap, setPostCategories } from "@/lib/taxonomy";
 import { ensureFeaturedSchedule } from "@/lib/featured";
 
 export const runtime = "nodejs";
@@ -16,11 +16,11 @@ function sameOrigin(request: Request) {
   try { return new URL(origin).origin === new URL(request.url).origin; } catch { return false; }
 }
 
-function toAdminPost(post: PostRecord) {
+function toAdminPost(post: PostRecord, categories: string[] = [post.category_name]) {
   return {
     id: post.id, title: post.title, slug: post.slug, excerpt: post.excerpt, contentHtml: post.content_html,
     featuredUntil: post.featured_until?.toISOString() || null,
-    coverImage: post.cover_image, coverAlt: post.cover_alt, coverCredit: post.cover_credit, category: post.category_name, categorySlug: post.category_slug,
+    coverImage: post.cover_image, coverAlt: post.cover_alt, coverCredit: post.cover_credit, category: post.category_name, categories, categorySlug: post.category_slug,
     country: post.country_name, destination: post.destination_name, createdBy: post.created_by,
     tags: post.tags, status: post.status, featured: post.featured, authorName: post.author_name,
     sourceUrl: post.source_url || "", sourceName: post.source_name, seoTitle: post.seo_title,
@@ -54,11 +54,12 @@ export async function GET() {
       : session.role === "author"
         ? []
         : await db<PostRecord[]>`SELECT * FROM posts ORDER BY updated_at DESC LIMIT 1000`;
+    const categoryMap = await getPostCategoryMap(posts.map((post) => post.id));
     const ingestLogs = hasPermission(session.role, "ingest:view")
       ? await db<{ id: string; source: string; received_count: number; created_count: number; updated_count: number; failed_count: number; status: string; created_at: Date }[]>`SELECT id, source, received_count, created_count, updated_count, failed_count, status, created_at FROM ingest_logs ORDER BY created_at DESC LIMIT 8`
       : [];
     return NextResponse.json({
-      posts: posts.map(toAdminPost),
+      posts: posts.map((post) => toAdminPost(post, (categoryMap.get(post.id) || [{ name: post.category_name, slug: post.category_slug }]).map((item) => item.name))),
       ingestLogs: ingestLogs.map((log) => ({ ...log, createdAt: log.created_at.toISOString() })),
       currentUser: { email: session.email, fullName: session.fullName, role: session.role, userId: session.userId },
     });
@@ -81,7 +82,9 @@ export async function POST(request: Request) {
   try {
     await ensureFeaturedSchedule();
     const slug = await findUniqueSlug(input.slug || input.title);
-    const topic = await ensureTopic(input.category || "Cẩm nang");
+    const categoryNames = [...new Set((input.categories?.length ? input.categories : [input.category || "Cẩm nang"]).map((name) => name.trim()).filter(Boolean))].slice(0, 12);
+    const primaryCategory = categoryNames[0] || "Cẩm nang";
+    const topic = await ensureTopic(primaryCategory);
     const country = input.country ? await ensureDestination(input.country, "country") : null;
     const destination = input.destination && country ? await ensureDestination(input.destination, "city", country.id) : null;
     const status = session.role === "author" ? "draft" : input.status;
@@ -107,7 +110,8 @@ export async function POST(request: Request) {
       VALUES (${input.title}, ${slug}, ${input.excerpt || ""}, ${cleanArticleHtml(contentToHtml(input.contentHtml || ""))}, ${coverImage}, ${input.coverAlt || ""}, ${input.coverCredit || ""}, ${topic.name}, ${topic.slug || slugify(topic.name)}, ${country?.id || null}, ${country?.name || ""}, ${country?.slug || ""}, ${destination?.id || null}, ${destination?.name || ""}, ${destination?.slug || ""}, ${input.tags || []}, ${status}, ${featured}, ${featuredUntil}, ${input.authorName || session.fullName || "Ban biên tập"}, ${session.userId}, ${session.userId}, ${input.sourceUrl || null}, ${input.sourceName || ""}, ${input.seoTitle || ""}, ${input.seoDescription || ""}, ${publishedAt})
       RETURNING *
     `;
-    return NextResponse.json({ post: toAdminPost(rows[0]) }, { status: 201 });
+    await setPostCategories(rows[0].id, categoryNames, primaryCategory);
+    return NextResponse.json({ post: toAdminPost(rows[0], categoryNames) }, { status: 201 });
   } catch (error) {
     console.error("admin posts POST failed", error);
     return NextResponse.json({ error: "Không lưu được bài viết. Có thể URL nguồn đã được dùng cho một bài khác." }, { status: 500 });
@@ -143,7 +147,9 @@ export async function PATCH(request: Request) {
       if (existing.status !== "draft") return NextResponse.json({ error: "Tác giả chỉ được chỉnh sửa bài đang ở trạng thái nháp. Hãy nhờ biên tập viên mở lại bài." }, { status: 403 });
     }
     const slug = await findUniqueSlug(input.slug || input.title, postId);
-    const topic = await ensureTopic(input.category || "Cẩm nang");
+    const categoryNames = [...new Set((input.categories?.length ? input.categories : [input.category || "Cẩm nang"]).map((name) => name.trim()).filter(Boolean))].slice(0, 12);
+    const primaryCategory = categoryNames[0] || "Cẩm nang";
+    const topic = await ensureTopic(primaryCategory);
     const country = input.country ? await ensureDestination(input.country, "country") : null;
     const destination = input.destination && country ? await ensureDestination(input.destination, "city", country.id) : null;
     const status = session.role === "author" ? "draft" : input.status;
@@ -176,7 +182,8 @@ export async function PATCH(request: Request) {
         source_url = ${input.sourceUrl || null}, source_name = ${input.sourceName || ""}, seo_title = ${input.seoTitle || ""}, seo_description = ${input.seoDescription || ""},
         published_at = ${publishedAt}, updated_by = ${session.userId}, updated_at = NOW() WHERE id = ${postId} RETURNING *
     `;
-    return NextResponse.json({ post: toAdminPost(rows[0]) });
+    await setPostCategories(rows[0].id, categoryNames, primaryCategory);
+    return NextResponse.json({ post: toAdminPost(rows[0], categoryNames) });
   } catch (error) {
     console.error("admin posts PATCH failed", error);
     return NextResponse.json({ error: "Không cập nhật được bài viết. Kiểm tra URL nguồn và slug có bị trùng không." }, { status: 500 });

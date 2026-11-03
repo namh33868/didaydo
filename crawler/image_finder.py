@@ -689,6 +689,26 @@ def _openverse_candidates(query: str) -> list[dict]:
     return output
 
 
+def _looks_like_ad_or_bad_image(candidate: dict) -> bool:
+    """Reject animated GIFs and obvious promotional creatives from image providers."""
+    parsed = urlsplit(_plain(candidate.get("url")))
+    path = (parsed.path or "").casefold()
+    if path.endswith((".gif", ".svg", ".ico")):
+        return True
+    descriptive = _normalise(" ".join((
+        _plain(candidate.get("title")),
+        _plain(candidate.get("description")),
+        _plain(candidate.get("tags_text")),
+        path,
+    )))
+    blocked = (
+        "advertisement", "advertising", "sponsored", "sponsor content",
+        "promotion banner", "promotional banner", "banner ad", "ad banner",
+        "web banner", "logo", "site icon", "tracking pixel",
+    )
+    return any(term in descriptive for term in blocked)
+
+
 def _rank_candidates(candidates: list[dict], place_terms: list[str], country_terms: list[str],
                      topic_terms: list[str], *, require_place: bool, require_country: bool = False,
                      context_terms: list[str] | None = None,
@@ -698,6 +718,8 @@ def _rank_candidates(candidates: list[dict], place_terms: list[str], country_ter
     context_terms = context_terms or []
     context_phrases = context_phrases or []
     for candidate in candidates:
+        if _looks_like_ad_or_bad_image(candidate):
+            continue
         metadata = _metadata_text(candidate.get("title"), candidate.get("description"), candidate.get("tags_text"))
         place_matches = _matches_any(metadata, place_terms)
         country_matches = _matches_any(metadata, country_terms)

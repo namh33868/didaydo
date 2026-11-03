@@ -11,6 +11,7 @@ export const postInputSchema = z.object({
   country: z.string().trim().max(120).optional().default(""),
   destination: z.string().trim().max(120).optional().default(""),
   category: z.string().trim().max(100).optional().default("Cẩm nang"),
+  categories: z.array(z.string().trim().min(1).max(100)).max(12).optional().default([]),
   tags: z.array(z.string().trim().min(1).max(80)).max(20).optional().default([]),
   status: z.enum(["draft", "published", "archived"]).optional(),
   featured: z.boolean().optional().default(false),

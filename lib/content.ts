@@ -76,6 +76,8 @@ function normalizeOneArticle(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const row = value as Record<string, unknown>;
   const rawTags = firstDefined(row.tags, row.keywords, row.labels);
+  const rawCategories = firstDefined(row.categories, row.categoryNames, row.category_names);
+  const categories = Array.isArray(rawCategories) ? rawCategories : typeof rawCategories === "string" ? rawCategories.split(/[;,]/).map((item) => item.trim()).filter(Boolean) : [];
   const tags = Array.isArray(rawTags) ? rawTags : typeof rawTags === "string" ? rawTags.split(/[;,]/).map((tag) => tag.trim()).filter(Boolean) : [];
   return {
     ...row,
@@ -89,6 +91,7 @@ function normalizeOneArticle(value: unknown) {
     country: firstDefined(row.country, row.countryName, row.country_name),
     destination: firstDefined(row.destination, row.destinationName, row.destination_name, row.city, row.cityName, row.city_name),
     category: firstDefined(row.category, row.categoryName, row.category_name, row.topic),
+    categories,
     tags,
     sourceUrl: firstDefined(row.sourceUrl, row.source_url, row.originalUrl, row.original_url, row.originUrl, row.url),
     sourceName: firstDefined(row.sourceName, row.source_name, row.publisher, row.source),

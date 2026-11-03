@@ -112,6 +112,21 @@ class ArticleImageRelevanceTests(unittest.TestCase):
         )
         self.assertEqual(len(ranked), 1)
 
+    def test_advertising_and_gif_candidates_are_filtered(self):
+        from image_finder import _rank_candidates
+
+        candidates = [
+            {"url": "https://example.com/ad-banner.jpg", "title": "Beautiful Kyoto temple", "description": "Kyoto temple", "width": 1600},
+            {"url": "https://example.com/animated.gif", "title": "Kyoto temple", "description": "Kyoto temple", "width": 1600},
+            {"url": "https://example.com/kyoto-temple.jpg", "title": "Kyoto temple", "description": "Historic Kyoto Japan temple", "width": 1600},
+        ]
+        ranked = _rank_candidates(
+            candidates, ["Kyoto"], ["Japan"], ["temple"],
+            require_place=True, require_country=True,
+            context_terms=["historic", "temple"], require_context=True,
+        )
+        self.assertEqual([item["url"] for item in ranked], ["https://example.com/kyoto-temple.jpg"])
+
     def test_generic_travel_copy_does_not_produce_specific_context(self):
         generic = {
             "source_title": "Travel guide",

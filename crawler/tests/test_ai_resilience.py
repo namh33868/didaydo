@@ -58,6 +58,31 @@ class AIResilienceTests(unittest.TestCase):
         self.assertFalse(main._is_ai_capacity_error("HTTP 413: Request too large for model"))
         self.assertTrue(main._is_ai_capacity_error("HTTP 429: rate limit exceeded"))
 
+    def test_advertising_gif_and_banner_images_are_rejected(self):
+        from bs4 import BeautifulSoup
+
+        gif = BeautifulSoup('<img src="https://example.com/animated.gif" alt="Aerial view">', "html.parser").img
+        banner = BeautifulSoup('<div class="advertisement-banner"><img src="https://example.com/photo.jpg"></div>', "html.parser").img
+        photo = BeautifulSoup('<figure><img src="https://example.com/coast.jpg" width="1600" height="900" alt="Coast"></figure>', "html.parser").img
+
+        self.assertTrue(main._is_promotional_or_decorative_image(gif, gif["src"]))
+        self.assertTrue(main._is_promotional_or_decorative_image(banner, banner["src"]))
+        self.assertFalse(main._is_promotional_or_decorative_image(photo, photo["src"]))
+
+    def test_english_output_is_rejected_but_vietnamese_is_accepted(self):
+        with self.assertRaisesRegex(ValueError, "tiếng Anh"):
+            main._validate_vietnamese_output(
+                "Best places to visit in Japan",
+                "Discover the best things to do in Kyoto.",
+                "The city is one of the most popular places for travelers. " * 12,
+            )
+
+        main._validate_vietnamese_output(
+            "Kinh nghiệm khám phá Kyoto vào mùa thu",
+            "Những gợi ý hữu ích cho chuyến đi Kyoto.",
+            "Kyoto có nhiều ngôi đền và khu phố cổ đáng khám phá vào mùa thu. " * 12,
+        )
+
     def test_daily_quota_provider_is_skipped_for_rest_of_run(self):
         with (
             patch.object(main, "GEMINI_API_KEY", "test-gemini-key"),
