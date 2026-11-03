@@ -49,8 +49,9 @@ function makeArticleBody(html: string) {
   const withoutImageAttribution = html.replace(/<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi, (caption) => {
     const text = caption.replace(/<[^>]*>/g, " ").toLocaleLowerCase("vi");
     const privateImageMarkers = [
-      "nguồn ảnh", "giấy phép", "ảnh:", "photo by", "image credit",
-      "credit:", "courtesy of",
+      "nguồn ảnh", "giấy phép", "ảnh:", "photo by", "photo:", "photo credit",
+      "image credit", "image by", "photograph by", "source:", "credit:",
+      "courtesy of", "licensed under", "creativecommons", "cc by", "provided by", "copyright",
     ];
     return privateImageMarkers.some((item) => text.includes(item)) ? "" : caption;
   });
