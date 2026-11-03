@@ -1,4 +1,4 @@
-name: Clean legacy public image attribution
+name: Clean legacy public image attribution captions (production)
 
 on:
   push:
