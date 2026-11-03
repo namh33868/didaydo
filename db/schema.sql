@@ -128,6 +128,19 @@ ALTER TABLE posts ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destin
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS destination_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS destination_slug TEXT NOT NULL DEFAULT '';
 
+-- Multi-category relationship; legacy category_* remains the primary category.
+CREATE TABLE IF NOT EXISTS post_categories (
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (post_id, category_id)
+);
+CREATE INDEX IF NOT EXISTS post_categories_category_post_idx ON post_categories (category_id, post_id);
+INSERT INTO post_categories (post_id, category_id, is_primary)
+SELECT p.id, c.id, TRUE FROM posts p JOIN categories c ON c.slug = p.category_slug
+ON CONFLICT (post_id, category_id) DO UPDATE SET is_primary = TRUE;
+
 -- Normalize legacy geography-as-topic labels into the editorial category system.
 UPDATE posts SET category_name = 'Điểm đến', category_slug = 'diem-den', updated_at = NOW()
   WHERE category_slug IN ('the-gioi', 'diem-den-viet-nam', 'destinations', 'destination');
