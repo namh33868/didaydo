@@ -941,7 +941,8 @@ def _is_ai_daily_quota_error(message):
     markers = (
         "requests per day", "request per day", "per day limit",
         "daily request limit", "generaterequestsperday",
-        "generate_content_free_tier_requests",
+        "generate_content_free_tier_requests", "exceeded your current quota",
+        "current quota has been exhausted",
     )
     return any(marker in value for marker in markers)
 
@@ -1966,15 +1967,16 @@ def _call_json_with_fallback(stage_name, instructions, input_data, validator):
             return result, provider_name, fallback_reason
         except Exception as exc:
             elapsed = time.monotonic() - started
-            message = clean_text(str(exc))[:200]
+            full_error_message = clean_text(str(exc))
+            message = full_error_message[:200]
             errors.append(f"{provider_name}: {type(exc).__name__}: {message}")
-            if _is_ai_daily_quota_error(message) or _is_ai_auth_error(message):
+            if _is_ai_daily_quota_error(full_error_message) or _is_ai_auth_error(full_error_message):
                 _AI_PROVIDERS_DISABLED_FOR_RUN[provider_name] = message
                 log.warning(
                     "AI provider=%s tạm ngừng đến hết lượt chạy do quota ngày/xác thực: %s",
                     provider_name, message[:180],
                 )
-            elif _is_ai_capacity_error(message):
+            elif _is_ai_capacity_error(full_error_message):
                 cooldown_until = time.monotonic() + AI_PROVIDER_COOLDOWN_SECONDS
                 _AI_PROVIDER_COOLDOWN_UNTIL[provider_name] = cooldown_until
                 log.warning(

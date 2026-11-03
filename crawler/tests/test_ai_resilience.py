@@ -87,6 +87,33 @@ class AIResilienceTests(unittest.TestCase):
         self.assertEqual(groq.call_count, 2)
         self.assertIn("Gemini", main._AI_PROVIDERS_DISABLED_FOR_RUN)
 
+    def test_transient_rate_limit_puts_provider_on_cooldown(self):
+        with (
+            patch.object(main, "GEMINI_API_KEY", "test-gemini-key"),
+            patch.object(main, "OPENAI_API_KEY", ""),
+            patch.object(main, "GROQ_API_KEY", "test-groq-key"),
+            patch.object(main, "OPENROUTER_API_KEY", ""),
+            patch.object(
+                main,
+                "_call_gemini",
+                side_effect=RuntimeError("429 rate limit: tokens per minute exceeded"),
+            ) as gemini,
+            patch.object(main, "_call_groq", return_value='{"ok": true}') as groq,
+        ):
+            for _ in range(2):
+                result, provider, _reason = main._call_json_with_fallback(
+                    "test",
+                    "instructions",
+                    {"input": "small"},
+                    lambda raw, _provider: raw,
+                )
+                self.assertEqual(result, '{"ok": true}')
+                self.assertEqual(provider, "Groq")
+
+        self.assertEqual(gemini.call_count, 1)
+        self.assertEqual(groq.call_count, 2)
+        self.assertIn("Gemini", main._AI_PROVIDER_COOLDOWN_UNTIL)
+
     def test_cover_image_failure_is_article_level_not_site_failure(self):
         self.assertTrue(main._is_cover_only_publish_failure(
             "RuntimeError: Bài nguồn không có ảnh hợp lệ và cũng không tìm được ảnh ngoài phù hợp; bài được giữ lại."

@@ -8,6 +8,13 @@ on:
       - "crawler/**/*.py"
       - "crawler/requirements.txt"
       - ".github/workflows/test-crawler.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "crawler/**/*.py"
+      - "crawler/requirements.txt"
+      - ".github/workflows/test-crawler.yml"
   workflow_dispatch:
 
 permissions:
