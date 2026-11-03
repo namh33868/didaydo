@@ -121,7 +121,7 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
   if (!incomingContent.trim()) {
     throw new Error("Article content is empty.");
   }
-  const contentHtml = cleanArticleHtml(contentToHtml(incomingContent));
+  const contentHtml = cleanArticleHtml(stripPublicImageAttribution(contentToHtml(incomingContent)));
   const status = resolveIngestStatus(input.status, existing?.status, autoPublish);
   const publishedAt: Date | null = status === "published"
     ? existing?.published_at || new Date()
@@ -224,6 +224,17 @@ function stripPublicImageAttribution(html: string): string {
       "credit:",
       "courtesy of",
       "tác giả ảnh",
+      "photo:",
+      "photo credit",
+      "photograph by",
+      "image by",
+      "source:",
+      "licensed under",
+      "creativecommons",
+      "cc by",
+      "provided by",
+      "copyright",
+      "ảnh được cung cấp bởi",
     ];
     const hasPrivateImageUrl = /https?:\/\//i.test(caption);
     return hasPrivateImageUrl || privateMarkers.some((marker) => visibleText.includes(marker))
