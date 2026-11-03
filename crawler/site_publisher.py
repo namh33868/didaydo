@@ -254,6 +254,33 @@ def _category_for(article: dict) -> str:
     return "Cẩm nang"
 
 
+def _categories_for(article: dict) -> list[str]:
+    """Map every classified topic to a public category, keeping the primary first."""
+    topic_map = {
+        "travel-guide": "Cẩm nang",
+        "travel-tips": "Kinh nghiệm du lịch",
+        "things-to-do": "Check-in",
+        "food-and-drink": "Ẩm thực",
+        "hotel-review": "Hotel review",
+        "itinerary": "Lịch trình",
+        "transport": "Di chuyển",
+        "culture-local-life": "Văn hóa & địa phương",
+        "budget-travel": "Chi phí & ngân sách",
+        "destination-news": "Tin du lịch",
+        "outdoor-adventure": "Điểm đến",
+        "family-travel": "Kinh nghiệm du lịch",
+        "sustainable-travel": "Văn hóa & địa phương",
+        "luxury-travel": "Hotel review",
+        "beach-island": "Check-in",
+    }
+    output = [_category_for(article)]
+    for topic in _parse_list(article.get("topic_categories")):
+        mapped = topic_map.get(clean(topic).casefold())
+        if mapped and mapped.casefold() not in {item.casefold() for item in output}:
+            output.append(mapped)
+    return output[:6]
+
+
 def _image_candidates(article: dict) -> list[dict]:
     images = article.get("source_images")
     if not isinstance(images, list):
@@ -324,6 +351,7 @@ def build_site_payload(article: dict, draft: dict) -> dict:
         "country": clean(article.get("destination_country"))[:120],
         "destination": clean(article.get("destination_city") or article.get("destination"))[:120],
         "category": _category_for(article),
+        "categories": _categories_for(article),
         "tags": tags,
         "status": "published",
         "featured": False,
@@ -438,9 +466,9 @@ def _ensure_source_article_images(
     by_original_url: dict[str, dict] = {}
     raw_source_urls: set[str] = set()
     try:
-        max_images = max(1, min(int(os.getenv("SOURCE_ARTICLE_MAX_IMAGES", "8")), 12))
+        max_images = max(1, min(int(os.getenv("SOURCE_ARTICLE_MAX_IMAGES", "4")), 6))
     except ValueError:
-        max_images = 8
+        max_images = 4
 
     ordered = sorted(
         candidates,
@@ -502,8 +530,9 @@ def _ensure_source_article_images(
                     if caption:
                         caption_text = clean(caption.get_text(" ", strip=True)).casefold()
                         attribution_markers = (
-                            "nguồn ảnh", "giấy phép", "ảnh:", "photo by",
-                            "image credit", "credit:", "courtesy of",
+                            "nguồn ảnh", "giấy phép", "ảnh:", "photo by", "photo:",
+                            "image credit", "image by", "credit:", "courtesy of",
+                            "source:", "licensed under", "creativecommons", "cc by",
                         )
                         if any(marker in caption_text for marker in attribution_markers):
                             caption.decompose()
