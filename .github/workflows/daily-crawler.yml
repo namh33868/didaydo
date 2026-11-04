@@ -44,6 +44,11 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+      REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
 
     steps:
       - name: Checkout repository
@@ -110,6 +115,11 @@ jobs:
               raise SystemExit("Vercel API does not report auto-publish enabled. Check route.ts and INGEST_AUTO_PUBLISH=true.")
           print("Vercel ingest API OK; auto-publish is enabled.")
           PY
+
+      - name: Email that crawler has started
+        if: success()
+        continue-on-error: true
+        run: python send_daily_report.py --stage started
 
       - name: Crawl and publish 3-10 articles (best effort)
         shell: bash
@@ -202,5 +212,5 @@ jobs:
           REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
           REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
           JOB_STATUS: ${{ job.status }}
-        run: python send_daily_report.py --job-status "$JOB_STATUS"
+        run: python send_daily_report.py --stage final --job-status "$JOB_STATUS"
 
