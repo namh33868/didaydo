@@ -3145,10 +3145,25 @@ def main(argv=None):
                 if site_result and site_result.get("ok") and site_result.get("status") == "published":
                     if not site_result.get("skipped"):
                         published_count += 1
+                        published_title = clean_text(draft.get("seo_title") or article.get("source_title"))
+                        published_url = site_result.get("site_url") or ""
                         published_articles.append({
-                            "title": clean_text(draft.get("seo_title") or article.get("source_title")),
-                            "url": site_result.get("site_url") or "",
+                            "title": published_title,
+                            "url": published_url,
                         })
+                        if published_count == 1:
+                            try:
+                                from send_daily_report import send_progress_notification
+                                send_progress_notification(
+                                    title=published_title,
+                                    url=published_url,
+                                    published_count=published_count,
+                                )
+                            except Exception as notify_exc:
+                                log.warning(
+                                    "Không gửi được email tiến độ; crawler vẫn tiếp tục (%s).",
+                                    type(notify_exc).__name__,
+                                )
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
                 elif site_result and site_result.get("ok") and site_result.get("skipped"):
                     log.info("Bỏ qua bài website đã xử lý: status=%s slug=%s", site_result.get("status"), site_result.get("slug"))
