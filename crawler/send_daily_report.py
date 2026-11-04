@@ -158,8 +158,11 @@ def _article_list(articles: list[dict]) -> str:
 def _failure_list(report: dict) -> str:
     failures = report.get("failures")
     failures = failures if isinstance(failures, list) else []
+    feed_errors = report.get("feed_errors")
+    feed_errors = feed_errors if isinstance(feed_errors, list) else []
     entries = []
-    for item in failures[:8]:
+
+    for item in failures[:6]:
         if not isinstance(item, dict):
             continue
         title = _esc(item.get("title") or "Bài chưa rõ tiêu đề")
@@ -180,6 +183,21 @@ def _failure_list(report: dict) -> str:
             "</tr>"
         )
 
+    for item in feed_errors[:3]:
+        if not isinstance(item, dict):
+            continue
+        title = _esc(item.get("name") or "Nguồn RSS")
+        reason = _esc(_short_error(item.get("error")))
+        entries.append(
+            "<tr>"
+            f"<td style='padding:8px 6px;border-top:1px solid #eaecf0;font-size:13px'>{title}"
+            "<div style='color:#98a2b3;font-size:11px'>RSS</div></td>"
+            "<td style='padding:8px 6px;border-top:1px solid #eaecf0;font-size:13px;"
+            "max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>"
+            f"<span title='{reason}'>{reason}</span></td>"
+            "</tr>"
+        )
+
     if not entries and report.get("fatal_error_reason"):
         reason = _esc(_short_error(report.get("fatal_error_reason")))
         entries.append(
@@ -191,17 +209,18 @@ def _failure_list(report: dict) -> str:
     if not entries:
         return ""
 
-    extra = len(failures) - min(len(failures), 8)
+    total_errors = len(failures) + len(feed_errors)
+    shown_errors = min(len(failures), 6) + min(len(feed_errors), 3)
+    extra = total_errors - shown_errors
     more = f"<p style='margin:6px 0;color:#667085;font-size:12px'>Còn {extra} lỗi khác trong log.</p>" if extra > 0 else ""
     return (
         "<h2 style='font-size:15px;margin:22px 0 6px'>Lỗi cần chú ý</h2>"
         "<table role='presentation' width='100%' cellspacing='0' cellpadding='0' "
         "style='border-collapse:collapse;table-layout:fixed'>"
-        "<tr><th align='left' style='padding:6px;font-size:11px;color:#667085'>Bài / công đoạn</th>"
+        "<tr><th align='left' style='padding:6px;font-size:11px;color:#667085'>Bài / nguồn</th>"
         "<th align='left' style='padding:6px;font-size:11px;color:#667085'>Nguyên nhân</th></tr>"
         + "".join(entries) + "</table>" + more
     )
-
 
 def _build_html(
     report: dict,
