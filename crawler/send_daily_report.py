@@ -1,32 +1,42 @@
-"""Send a readable daily crawler operations report through Gmail SMTP or Resend."""
+"""Compact start/progress/final email notifications for the daily travel crawler."""
 from __future__ import annotations
 
 import argparse
 import html
 import json
 import os
+import re
 import smtplib
 import ssl
+from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 REPORT_PATH = Path(__file__).resolve().parent / "logs" / "daily-report.json"
+_PROGRESS_NOTIFICATION_SENT = False
+VIETNAM_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 STATUS_LABELS = {
-    "completed": ("ĐẠT MỤC TIÊU", "#18794e"),
-    "warning": ("ĐÃ CHẠY - CÓ CẢNH BÁO", "#9a6700"),
-    "below_minimum": ("CHƯA ĐẠT MỨC TỐI THIỂU", "#9a6700"),
-    "quota_limited": ("DỪNG DO GIỚI HẠN AI", "#9a6700"),
-    "ai_provider_unavailable": ("DỪNG DO AI LỖI LIÊN TIẾP", "#9a6700"),
-    "source_error": ("LỖI ĐỌC NGUỒN RSS", "#b42318"),
-    "no_new_articles": ("KHÔNG CÓ BÀI MỚI ĐỂ XỬ LÝ", "#9a6700"),
-    "no_relevant_articles": ("KHÔNG CÓ BÀI PHÙ HỢP DANH MỤC", "#9a6700"),
-    "no_posts": ("CHƯA XUẤT BẢN ĐƯỢC BÀI", "#b42318"),
-    "fatal_error": ("LỖI HỆ THỐNG KHI XUẤT BẢN", "#b42318"),
-    "report_missing": ("KHÔNG TẠO ĐƯỢC BÁO CÁO CRAWLER", "#b42318"),
+    "completed": "ĐÃ HOÀN THÀNH",
+    "warning": "ĐÃ ĐĂNG BÀI · CÓ LỖI",
+    "below_minimum": "CHƯA ĐẠT MỤC TIÊU",
+    "quota_limited": "DỪNG DO GIỚI HẠN AI",
+    "ai_provider_unavailable": "AI TẠM THỜI KHÔNG KHẢ DỤNG",
+    "source_error": "LỖI NGUỒN RSS",
+    "no_new_articles": "KHÔNG CÓ BÀI MỚI",
+    "no_relevant_articles": "KHÔNG CÓ BÀI PHÙ HỢP",
+    "no_posts": "CHƯA ĐĂNG ĐƯỢC BÀI",
+    "fatal_error": "LỖI KHI XUẤT BẢN",
+    "report_missing": "KHÔNG TẠO ĐƯỢC BÁO CÁO",
+    "running": "ĐANG CHẠY",
 }
+
+
+def _now() -> datetime:
+    return datetime.now(VIETNAM_TZ)
 
 
 def _load_report() -> dict:
@@ -41,18 +51,36 @@ def _esc(value) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
 
 
-def _duration(value) -> str:
-    try:
-        seconds = max(0, int(float(value or 0)))
-    except (TypeError, ValueError):
-        seconds = 0
-    minutes, secs = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours} giờ {minutes} phút"
-    if minutes:
-        return f"{minutes} phút {secs} giây"
-    return f"{secs} giây"
+def _short_error(value, limit: int = 112) -> str:
+    """Turn provider/HTTP trace fragments into short, readable Vietnamese labels."""
+    message = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not message:
+        return "Không có mô tả lỗi."
+
+    lower = message.casefold()
+    if ("429" in lower or "rate limit" in lower or "tpm" in lower) and "groq" in lower:
+        return "Groq vượt giới hạn tốc độ (429/TPM)."
+    if "gemini" in lower and ("quota" in lower or "resource_exhausted" in lower):
+        return "Gemini đã hết hạn mức sử dụng."
+    if "quota" in lower or "resource_exhausted" in lower:
+        return "AI đã hết hạn mức sử dụng."
+    if "invalid json" in lower or "json validation" in lower or "json không hợp lệ" in lower:
+        return "AI trả về dữ liệu sai định dạng."
+    if "max token" in lower or "truncat" in lower or "empty output" in lower or "nội dung rỗng" in lower:
+        return "AI trả về nội dung rỗng hoặc bị cắt."
+    if "timeout" in lower or "timed out" in lower or "hết thời gian" in lower:
+        return "Dịch vụ phản hồi quá thời gian chờ."
+    if "không tìm được ảnh" in lower or "không có ảnh hợp lệ" in lower or "cover image" in lower:
+        return "Không tìm được ảnh bìa phù hợp và đủ quyền sử dụng."
+    if "neon" in lower and ("connect" in lower or "database" in lower):
+        return "Không kết nối được cơ sở dữ liệu."
+    if "401" in lower or "unauthorized" in lower or "403" in lower:
+        return "API từ chối truy cập (kiểm tra khóa hoặc quyền)."
+    if "500" in lower or "502" in lower or "503" in lower or "504" in lower:
+        return "Dịch vụ bên ngoài đang gặp sự cố."
+    if len(message) <= limit:
+        return message
+    return message[: max(1, limit - 3)].rstrip(" ,;:.-") + "..."
 
 
 def _run_url() -> str:
@@ -67,381 +95,476 @@ def _run_url() -> str:
     return ""
 
 
-def _status(report: dict, job_status: str) -> tuple[str, str]:
-    key = str(report.get("status") or "report_missing")
-    label, color = STATUS_LABELS.get(key, (key.upper(), "#57606a"))
-    if str(job_status).lower() != "success":
-        return ("WORKFLOW THẤT BẠI", "#b42318")
-    return label, color
+def _recipients() -> list[str]:
+    value = os.getenv("REPORT_EMAIL_TO", "").strip()
+    return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
 
 
-def _next_step(report: dict, job_status: str) -> str:
-    if str(job_status).lower() != "success":
-        if report.get("status") == "report_missing":
-            return "Crawler dừng trước khi tạo báo cáo. Mở link GitHub Actions để xem bước cấu hình/API nào bị lỗi."
-        if report.get("status") == "fatal_error":
-            reason = str(report.get("fatal_error_reason") or "").strip()
-            detail = f" Chi tiết: {reason}" if reason else ""
-            return "Crawler phải dừng vì lỗi hệ thống ở API xuất bản; các bài tiếp theo chưa được xử lý." + detail + " Kiểm tra log GitHub Actions trước lượt chạy kế tiếp."
-        return "Mở log GitHub Actions để xem bước thất bại. Báo cáo nội dung bên dưới chỉ phản ánh phần đã chạy được."
-    status = report.get("status")
-    if status == "completed":
-        return "Đã đạt mục tiêu tối thiểu. Kiểm tra các đường dẫn bài viết bên dưới và tiếp tục theo dõi traffic trong GA4."
-    if status == "warning":
-        return "Crawler có xuất bản bài nhưng một số nguồn hoặc URL gặp lỗi. Xem danh sách nguồn lỗi để biết nguồn nào cần xử lý."
-    if status == "below_minimum":
-        return "Đã có bài xuất bản nhưng chưa đạt 3 bài tối thiểu. Kiểm tra lỗi AI, lỗi URL và nguồn RSS; các bài AI chưa hoàn chỉnh được giữ để thử lại."
-    if status == "quota_limited":
-        return "AI đã chạm quota hoặc rate limit. Crawler dừng gọi AI để tránh tiêu token tiếp; bài chưa hoàn chỉnh sẽ được thử lại ở lịch sau."
-    if status == "ai_provider_unavailable":
-        reason = str(report.get("ai_stop_reason") or "").strip()
-        detail = f" Chi tiết: {reason}" if reason else ""
-        return "Các provider AI đều thất bại ở nhiều URL liên tiếp nên crawler đã tự dừng; một bài lỗi đơn lẻ không còn làm dừng cả lượt chạy. Các URL chưa hoàn chỉnh sẽ được thử lại ở lịch sau." + detail
-    if status == "source_error":
-        return "Không đọc được các nguồn RSS. Kiểm tra parser XML, feed URL và các lỗi 403/503/SSL ở bảng nguồn lỗi."
-    if status == "no_relevant_articles":
-        return "Có URL mới nhưng không bài nào khớp các danh mục biên tập hiện tại. Kiểm tra nguồn RSS hoặc bổ sung từ khóa phân loại nếu nguồn có nội dung du lịch phù hợp."
-    if status == "no_new_articles":
-        return "Các feed đã đọc được nhưng không có URL mới đủ điều kiện. Kiểm tra lại vào lượt chạy kế tiếp."
-    if status == "no_posts":
-        return "Có URL được xử lý nhưng chưa xuất bản được bài nào. Kiểm tra lỗi xử lý bài, AI hoặc API xuất bản bên dưới."
-    return "Mở log GitHub Actions để kiểm tra chi tiết lượt chạy."
+def _status_label(report: dict, job_status: str, stage: str = "final") -> str:
+    if stage == "started":
+        return "ĐANG CHẠY"
+    if stage == "progress":
+        return "ĐÃ CÓ BÀI MỚI"
+    if str(job_status).lower() not in {"success", "unknown"}:
+        return "WORKFLOW THẤT BẠI"
+    return STATUS_LABELS.get(str(report.get("status") or "report_missing"), "CẦN KIỂM TRA")
 
 
-def _table_rows(rows: list[dict], *, source_rows: bool = False) -> str:
-    rendered = []
-    for item in rows:
+def _subject(report: dict, job_status: str, stage: str) -> str:
+    date = str(report.get("date") or _now().strftime("%Y-%m-%d"))
+    if stage == "started":
+        return f"[Đi Đây Đó] BẮT ĐẦU CRAWL · {date}"
+    if stage == "progress":
+        count = int(report.get("published_count") or 1)
+        return f"[Đi Đây Đó] ĐÃ ĐĂNG {count} BÀI · {date}"
+    count = int(report.get("published_count") or 0)
+    label = _status_label(report, job_status, stage)
+    return f"[Đi Đây Đó] {label} · {date} · {count} bài"
+
+
+def _duration(value) -> str:
+    try:
+        seconds = max(0, int(float(value or 0)))
+    except (TypeError, ValueError):
+        seconds = 0
+    minutes, secs = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours} giờ {minutes} phút"
+    if minutes:
+        return f"{minutes} phút"
+    return f"{secs} giây"
+
+
+def _article_list(articles: list[dict]) -> str:
+    rows = []
+    for item in articles[:10]:
         if not isinstance(item, dict):
             continue
-        if source_rows:
-            name = _esc(item.get("name") or "Nguồn không rõ")
-            status = "Lỗi" if item.get("status") == "failed" else "Đọc được"
-            entries = _esc(item.get("entries", 0))
-            reason = _esc(item.get("error") or "—")
-            rendered.append(
-                f"<tr><td>{name}</td><td>{status}</td><td style='text-align:right'>{entries}</td><td>{reason}</td></tr>"
+        title = _esc(item.get("title") or "Bài viết mới")
+        url = str(item.get("url") or "").strip()
+        if url.startswith(("https://", "http://")):
+            rows.append(
+                f"<li style='margin:0 0 8px'><a href='{_esc(url)}' "
+                f"style='color:#176b50;text-decoration:none'>{title}</a></li>"
             )
         else:
-            title = _esc(item.get("title") or "Bài viết chưa rõ tiêu đề")
-            source = _esc(item.get("source") or "Không rõ nguồn")
-            stage_key = str(item.get("stage") or "processing")
-            stage = _esc({
-                "ai": "Tạo nội dung AI",
-                "publish": "Đăng lên website",
-                "extract_or_process": "Đọc/trích xuất bài nguồn",
-            }.get(stage_key, stage_key))
-            reason = _esc(item.get("reason") or "Không có mô tả lỗi")
-            rendered.append(
-                f"<tr><td>{title}</td><td>{source}</td><td>{stage}</td><td>{reason}</td></tr>"
-            )
-    return "".join(rendered)
+            rows.append(f"<li style='margin:0 0 8px'>{title}</li>")
+    return "<ol style='padding-left:22px;margin:8px 0'>" + "".join(rows) + "</ol>" if rows else (
+        "<p style='margin:8px 0;color:#667085'>Chưa có bài nào được xác nhận xuất bản.</p>"
+    )
 
 
-def _build_html(report: dict, job_status: str, run_url: str) -> str:
-    articles = report.get("articles") if isinstance(report.get("articles"), list) else []
-    feed_errors = report.get("feed_errors") if isinstance(report.get("feed_errors"), list) else []
-    failures = report.get("failures") if isinstance(report.get("failures"), list) else []
-    feed_stats = report.get("feed_stats") if isinstance(report.get("feed_stats"), list) else []
-    date = _esc(report.get("date") or "Không có dữ liệu ngày chạy")
+def _failure_list(report: dict) -> str:
+    failures = report.get("failures")
+    failures = failures if isinstance(failures, list) else []
+    feed_errors = report.get("feed_errors")
+    feed_errors = feed_errors if isinstance(feed_errors, list) else []
+    entries = []
+
+    for item in failures[:6]:
+        if not isinstance(item, dict):
+            continue
+        title = _esc(item.get("title") or "Bài chưa rõ tiêu đề")
+        stage = str(item.get("stage") or "")
+        stage_label = {
+            "ai": "AI",
+            "publish": "Đăng bài",
+            "extract_or_process": "Đọc nguồn",
+        }.get(stage, "Xử lý")
+        reason = _esc(_short_error(item.get("reason")))
+        entries.append(
+            "<tr>"
+            f"<td style='padding:8px 6px;border-top:1px solid #eaecf0;font-size:13px'>{title}"
+            f"<div style='color:#98a2b3;font-size:11px'>{stage_label}</div></td>"
+            "<td style='padding:8px 6px;border-top:1px solid #eaecf0;font-size:13px;"
+            "max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>"
+            f"<span title='{reason}'>{reason}</span></td>"
+            "</tr>"
+        )
+
+    for item in feed_errors[:3]:
+        if not isinstance(item, dict):
+            continue
+        title = _esc(item.get("name") or "Nguồn RSS")
+        reason = _esc(_short_error(item.get("error")))
+        entries.append(
+            "<tr>"
+            f"<td style='padding:8px 6px;border-top:1px solid #eaecf0;font-size:13px'>{title}"
+            "<div style='color:#98a2b3;font-size:11px'>RSS</div></td>"
+            "<td style='padding:8px 6px;border-top:1px solid #eaecf0;font-size:13px;"
+            "max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>"
+            f"<span title='{reason}'>{reason}</span></td>"
+            "</tr>"
+        )
+
+    if not entries and report.get("fatal_error_reason"):
+        reason = _esc(_short_error(report.get("fatal_error_reason")))
+        entries.append(
+            "<tr><td colspan='2' style='padding:8px 6px;border-top:1px solid #eaecf0;"
+            "font-size:13px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>"
+            f"<span title='{reason}'>{reason}</span></td></tr>"
+        )
+
+    if not entries:
+        return ""
+
+    total_errors = len(failures) + len(feed_errors)
+    shown_errors = min(len(failures), 6) + min(len(feed_errors), 3)
+    extra = total_errors - shown_errors
+    more = f"<p style='margin:6px 0;color:#667085;font-size:12px'>Còn {extra} lỗi khác trong log.</p>" if extra > 0 else ""
+    return (
+        "<h2 style='font-size:15px;margin:22px 0 6px'>Lỗi cần chú ý</h2>"
+        "<table role='presentation' width='100%' cellspacing='0' cellpadding='0' "
+        "style='border-collapse:collapse;table-layout:fixed'>"
+        "<tr><th align='left' style='padding:6px;font-size:11px;color:#667085'>Bài / nguồn</th>"
+        "<th align='left' style='padding:6px;font-size:11px;color:#667085'>Nguyên nhân</th></tr>"
+        + "".join(entries) + "</table>" + more
+    )
+
+def _build_html(
+    report: dict,
+    job_status: str,
+    run_url: str,
+    stage: str = "final",
+    article_title: str = "",
+    article_url: str = "",
+) -> str:
+    date = _esc(report.get("date") or _now().strftime("%Y-%m-%d"))
     count = int(report.get("published_count") or 0)
     minimum = int(report.get("minimum") or 3)
     preferred = int(report.get("preferred") or 5)
     maximum = int(report.get("maximum") or 10)
-    label, color = _status(report, job_status)
-
-    enabled = int(report.get("enabled_source_count") or 0)
-    ok_feeds = int(report.get("successful_feed_count") or 0)
+    failures_count = int(report.get("failed_count") or 0)
     failed_feeds = int(report.get("failed_feed_count") or 0)
-    feeds_with_items = int(report.get("feeds_with_items_count") or 0)
-    candidates = int(report.get("candidate_url_count") or 0)
-    attempted = int(report.get("attempted_url_count") or 0)
-    processed = int(report.get("processed_article_count") or 0)
-    duplicate_count = int(report.get("duplicate_skipped_count") or 0)
-    irrelevant_count = int(report.get("irrelevant_skipped_count") or 0)
-    retry_count = int(report.get("retry_candidate_count") or 0)
-    image_backfill_checked = int(report.get("image_backfill_checked") or 0)
-    image_backfill_updated = int(report.get("image_backfill_updated") or 0)
-    image_backfill_unmatched = int(report.get("image_backfill_unmatched") or 0)
-    image_backfill_failed = int(report.get("image_backfill_failed") or 0)
-    failed_articles = int(report.get("failed_count") or 0)
-    duration = _duration(report.get("duration_seconds"))
-    recovered = int(report.get("recovered_count") or 0)
-    new_count = int(report.get("new_published_count") or max(0, count - recovered))
+    successful_feeds = int(report.get("successful_feed_count") or 0)
+    label = _status_label(report, job_status, stage)
+    palette = {
+        "ĐANG CHẠY": ("#eff6ff", "#1d4ed8"),
+        "ĐÃ CÓ BÀI MỚI": ("#ecfdf3", "#067647"),
+        "ĐÃ HOÀN THÀNH": ("#ecfdf3", "#067647"),
+        "ĐÃ ĐĂNG BÀI · CÓ LỖI": ("#fffaeb", "#b54708"),
+        "WORKFLOW THẤT BẠI": ("#fef3f2", "#b42318"),
+    }
+    bg, fg = palette.get(label, ("#fffaeb", "#b54708"))
 
-    if articles:
-        article_rows = []
-        for item in articles:
-            if not isinstance(item, dict):
-                continue
-            title = _esc(item.get("title") or "Bài viết mới")
-            url = str(item.get("url") or "").strip()
-            if url.startswith(("https://", "http://")):
-                article_rows.append(f"<li><a href='{_esc(url)}'>{title}</a></li>")
-            else:
-                article_rows.append(f"<li>{title} <em>(không có URL)</em></li>")
-        articles_html = "<ol>" + "".join(article_rows) + "</ol>"
+    if stage == "started":
+        heading = "Crawler đã bắt đầu"
+        intro = "Hệ thống đang thu thập nguồn và xử lý bài. Email tiếp theo sẽ báo khi có bài được đăng hoặc khi lượt chạy kết thúc."
+        details = (
+            "<div style='margin-top:18px;padding:14px;background:#f8fafc;border-radius:8px'>"
+            "<strong>Trạng thái hiện tại:</strong> Đang chạy · Chưa có bài được xác nhận xuất bản."
+            "</div>"
+        )
+    elif stage == "progress":
+        heading = "Đã có bài mới trên website"
+        safe_title = _esc(article_title or "Bài viết mới")
+        safe_url = str(article_url or "").strip()
+        title_markup = (
+            f"<a href='{_esc(safe_url)}' style='color:#176b50;text-decoration:none'>{safe_title}</a>"
+            if safe_url.startswith(("https://", "http://")) else safe_title
+        )
+        details = (
+            "<div style='margin-top:18px;padding:14px;background:#ecfdf3;border-radius:8px'>"
+            f"<strong>Bài vừa đăng:</strong><div style='margin-top:6px'>{title_markup}</div>"
+            "</div>"
+        )
+        intro = "Crawler vẫn đang tiếp tục. Email tổng kết sẽ gửi khi hoàn tất hoặc dừng do lỗi."
     else:
-        articles_html = "<p style='margin:0;color:#6b7280'>Không có bài nào được xác nhận publish trong lượt chạy này.</p>"
+        heading = "Kết quả lượt crawler"
+        intro = (
+            "Workflow đã kết thúc thành công."
+            if str(job_status).lower() == "success"
+            else "Workflow gặp lỗi hoặc bị dừng. Dưới đây là kết quả ghi nhận được trước thời điểm dừng."
+        )
+        articles = report.get("articles") if isinstance(report.get("articles"), list) else []
+        details = (
+            "<h2 style='font-size:15px;margin:22px 0 6px'>Bài đã xuất bản</h2>"
+            + _article_list(articles)
+            + _failure_list(report)
+        )
+        if not articles and not report.get("failures") and report.get("fatal_error_reason"):
+            details += (
+                "<p style='margin:10px 0;color:#b42318;font-size:13px'>"
+                f"{_esc(_short_error(report.get('fatal_error_reason')))}</p>"
+            )
 
-    source_table = ""
-    if feed_errors:
-        source_table = f"""
-        <h3 style="margin:24px 0 8px">Nguồn RSS gặp lỗi ({len(feed_errors)})</h3>
-        <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:#f3f4f6"><th align="left">Nguồn</th><th align="left">Kết quả</th><th align="right">Bài trong feed</th><th align="left">Lý do</th></tr></thead>
-          <tbody>{_table_rows(feed_errors[:15], source_rows=True)}</tbody>
-        </table>
-        {"<p style='font-size:12px;color:#6b7280'>Chỉ hiển thị tối đa 15 nguồn lỗi đầu tiên.</p>" if len(feed_errors)>15 else ""}
-        """
+    run_link = (
+        f"<a href='{_esc(run_url)}' style='color:#176b50;text-decoration:none'>Mở chi tiết lượt chạy trên GitHub</a>"
+        if run_url else ""
+    )
+    site_url = str(report.get("site_url") or os.getenv("SITE_URL") or "").strip().rstrip("/")
+    site_link = (
+        f"<a href='{_esc(site_url)}' style='color:#176b50;text-decoration:none'>Mở website</a>"
+        if site_url.startswith(("https://", "http://")) else ""
+    )
+    links = " &nbsp;·&nbsp; ".join(item for item in (run_link, site_link) if item)
 
-    failure_table = ""
-    if failures:
-        failure_table = f"""
-        <h3 style="margin:24px 0 8px">Bài/URL xử lý chưa thành công ({len(failures)})</h3>
-        <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:#f3f4f6"><th align="left">Bài</th><th align="left">Nguồn</th><th align="left">Công đoạn</th><th align="left">Lý do</th></tr></thead>
-          <tbody>{_table_rows(failures[:12])}</tbody>
-        </table>
-        {"<p style='font-size:12px;color:#6b7280'>Chỉ hiển thị tối đa 12 lỗi đầu tiên.</p>" if len(failures)>12 else ""}
-        """
+    metrics = (
+        "<table role='presentation' width='100%' cellspacing='0' cellpadding='0' "
+        "style='margin-top:18px;border-collapse:separate;border-spacing:6px 0;text-align:center'>"
+        "<tr>"
+        f"<td style='width:33%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
+        f"<div style='font-size:25px;font-weight:700;color:#176b50'>{count}</div>"
+        "<div style='font-size:11px;color:#667085'>Bài đã đăng</div></td>"
+        f"<td style='width:33%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
+        f"<div style='font-size:25px;font-weight:700'>{minimum}</div>"
+        "<div style='font-size:11px;color:#667085'>Tối thiểu</div></td>"
+        f"<td style='width:33%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
+        f"<div style='font-size:25px;font-weight:700'>{failures_count}</div>"
+        "<div style='font-size:11px;color:#667085'>Bài lỗi</div></td>"
+        "</tr></table>"
+    )
 
-    links = []
-    if run_url:
-        links.append(f"<a href='{_esc(run_url)}'>Mở log và chi tiết lượt chạy trên GitHub Actions</a>")
-    site_url = str(report.get("site_url") or "").strip().rstrip("/")
-    if site_url.startswith(("https://", "http://")):
-        links.append(f"<a href='{_esc(site_url)}'>Mở website Đi Đây Đó</a>")
+    extra_stats = ""
+    if stage == "final":
+        extra_stats = (
+            f"<p style='margin:12px 0 0;color:#667085;font-size:12px'>"
+            f"RSS: {successful_feeds} feed đọc được · {failed_feeds} feed lỗi"
+            f" &nbsp;|&nbsp; Mục tiêu: {minimum} tối thiểu / {preferred} mong muốn / {maximum} tối đa"
+            f" &nbsp;|&nbsp; Thời gian: {_esc(_duration(report.get('duration_seconds')))}"
+            "</p>"
+        )
 
-    workflow_line = "Thành công" if str(job_status).lower() == "success" else "Thất bại"
-    return f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#202124;max-width:760px;margin:0 auto">
-      <div style="padding:22px 24px;background:#f5f6f4;border:1px solid #e1e5df;border-radius:12px 12px 0 0">
-        <div style="font-size:12px;letter-spacing:1px;color:#657064">ĐI ĐÂY ĐÓ · BÁO CÁO VẬN HÀNH</div>
-        <h1 style="font-size:23px;margin:6px 0">Kết quả crawler ngày {date}</h1>
-        <div style="display:inline-block;padding:5px 10px;border-radius:5px;background:{color};color:#fff;font-size:12px;font-weight:bold">{_esc(label)}</div>
-        <p style="margin:10px 0 0;font-size:13px;color:#525a52">Workflow GitHub Actions: <strong>{workflow_line}</strong> · Thời gian chạy crawler: <strong>{duration}</strong></p>
-      </div>
-      <div style="padding:20px 24px;border:1px solid #e1e5df;border-top:0">
-        <h2 style="font-size:17px;margin:0 0 10px">1. Kết quả xuất bản</h2>
-        <table width="100%" cellpadding="10" cellspacing="0" style="border-collapse:collapse;text-align:center">
-          <tr>
-            <td style="background:#eef6ef;border-radius:8px"><div style="font-size:28px;font-weight:bold;color:#18794e">{count}</div><div style="font-size:12px">Bài đã publish</div></td>
-            <td width="8"></td>
-            <td style="background:#f5f6f4;border-radius:8px"><div style="font-size:28px;font-weight:bold">{minimum}</div><div style="font-size:12px">Mục tiêu tối thiểu</div></td>
-            <td width="8"></td>
-            <td style="background:#f5f6f4;border-radius:8px"><div style="font-size:28px;font-weight:bold">{preferred}</div><div style="font-size:12px">Mục tiêu mong muốn</div></td>
-            <td width="8"></td>
-            <td style="background:#f5f6f4;border-radius:8px"><div style="font-size:28px;font-weight:bold">{maximum}</div><div style="font-size:12px">Giới hạn tối đa</div></td>
-          </tr>
-        </table>
-        <p style="font-size:13px;color:#525a52">Trong đó: {new_count} bài mới · {recovered} bài khôi phục từ hàng đợi cũ. Bài lỗi/chưa xuất bản: <strong>{failed_articles}</strong>.</p>
-
-        <h3 style="font-size:15px;margin:22px 0 8px">Bài đã xuất bản và đường dẫn</h3>
-        {articles_html}
-
-        <h2 style="font-size:17px;margin:26px 0 10px">2. Tình hình nguồn RSS</h2>
-        <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px">
-          <tr><td>Nguồn đang bật</td><td align="right"><strong>{enabled}</strong></td></tr>
-          <tr><td>Feed đọc được</td><td align="right"><strong>{ok_feeds}</strong></td></tr>
-          <tr><td>Feed có bài mới</td><td align="right"><strong>{feeds_with_items}</strong></td></tr>
-          <tr><td>Feed bị lỗi</td><td align="right"><strong>{failed_feeds}</strong></td></tr>
-          <tr><td>URL ứng viên thu thập được</td><td align="right"><strong>{candidates}</strong></td></tr>
-        </table>
-        {source_table}
-
-        <h2 style="font-size:17px;margin:26px 0 10px">3. Quá trình xử lý bài</h2>
-        <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px">
-          <tr><td>URL mới đã thử</td><td align="right"><strong>{attempted}</strong></td></tr>
-          <tr><td>Bài đã xử lý xong bước crawl/AI</td><td align="right"><strong>{processed}</strong></td></tr>
-          <tr><td>URL trùng/đã biết được bỏ qua</td><td align="right"><strong>{duplicate_count}</strong></td></tr>
-          <tr><td>Bài ngoài danh mục biên tập được bỏ qua</td><td align="right"><strong>{irrelevant_count}</strong></td></tr>
-          <tr><td>Bài cũ được đưa vào hàng đợi thử lại</td><td align="right"><strong>{retry_count}</strong></td></tr>
-          <tr><td>Bài đã rà ảnh đại diện cũ</td><td align="right"><strong>{image_backfill_checked}</strong></td></tr>
-          <tr><td>Bài cũ đã bổ sung ảnh</td><td align="right"><strong>{image_backfill_updated}</strong></td></tr>
-          <tr><td>Chưa tìm được ảnh / lỗi bổ sung</td><td align="right"><strong>{image_backfill_unmatched} / {image_backfill_failed}</strong></td></tr>
-          <tr><td>Bài lỗi/chưa publish</td><td align="right"><strong>{failed_articles}</strong></td></tr>
-        </table>
-        {failure_table}
-
-        <div style="margin-top:24px;padding:14px 16px;background:#fff8e6;border-left:4px solid #d99b20">
-          <strong>4. Việc cần làm tiếp theo</strong>
-          <p style="margin:6px 0 0;font-size:13px">{_esc(_next_step(report, job_status))}</p>
-        </div>
-        <div style="margin-top:22px;font-size:13px">{"<p>" + " · ".join(links) + "</p>" if links else ""}
-        <p style="color:#6b7280;font-size:11px;margin-top:18px">Đây là báo cáo số liệu crawler, không phải thống kê người truy cập website. Lượt xem, phiên truy cập và người dùng quay lại được theo dõi riêng trong Google Analytics 4.</p>
-        </div>
-      </div>
-    </div>
-    """
+    return f"""<!doctype html>
+<html lang="vi"><body style="margin:0;padding:20px;background:#f5f7f6;font-family:Arial,Helvetica,sans-serif;color:#202124;line-height:1.5">
+<div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e4e7ec;border-radius:12px;overflow:hidden">
+  <div style="padding:20px 22px;border-bottom:1px solid #eaecf0">
+    <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#667085">ĐI ĐÂY ĐÓ · CRAWLER</div>
+    <h1 style="font-size:21px;line-height:1.3;margin:8px 0 6px">{heading}</h1>
+    <span style="display:inline-block;padding:4px 9px;border-radius:20px;background:{bg};color:{fg};font-size:11px;font-weight:700">{_esc(label)}</span>
+    <p style="margin:10px 0 0;color:#667085;font-size:12px">Ngày {date}</p>
+  </div>
+  <div style="padding:18px 22px">
+    <p style="margin:0;font-size:14px">{intro}</p>
+    {metrics if stage != "started" else ""}
+    {extra_stats}
+    {details}
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #eaecf0;font-size:12px">{links}</div>
+  </div>
+</div></body></html>"""
 
 
-def _build_text(report: dict, job_status: str, run_url: str) -> str:
-    articles = report.get("articles") if isinstance(report.get("articles"), list) else []
-    feed_errors = report.get("feed_errors") if isinstance(report.get("feed_errors"), list) else []
-    failures = report.get("failures") if isinstance(report.get("failures"), list) else []
-    date = report.get("date") or "Không có ngày chạy"
-    label, _ = _status(report, job_status)
+def _build_text(
+    report: dict,
+    job_status: str,
+    run_url: str,
+    stage: str = "final",
+    article_title: str = "",
+    article_url: str = "",
+) -> str:
+    date = report.get("date") or _now().strftime("%Y-%m-%d")
+    count = int(report.get("published_count") or 0)
     lines = [
-        f"BÁO CÁO CRAWLER ĐI ĐÂY ĐÓ - {date}",
-        f"KẾT LUẬN: {label}",
-        f"Trạng thái GitHub Actions: {job_status}",
-        f"Đã publish: {report.get('published_count', 0)} bài",
-        f"Mục tiêu: {report.get('minimum', 3)} tối thiểu / {report.get('preferred', 5)} mong muốn / {report.get('maximum', 10)} tối đa",
-        f"Nguồn RSS: {report.get('successful_feed_count', 0)} đọc được; {report.get('failed_feed_count', 0)} lỗi; {report.get('candidate_url_count', 0)} URL ứng viên",
-        f"Xử lý: {report.get('attempted_url_count', 0)} URL đã thử; {report.get('processed_article_count', 0)} bài đã xử lý; {report.get('duplicate_skipped_count', 0)} URL trùng; {report.get('irrelevant_skipped_count', 0)} bài ngoài danh mục; {report.get('failed_count', 0)} bài lỗi",
-        f"Ảnh bài cũ: đã rà {report.get('image_backfill_checked', 0)}; bổ sung {report.get('image_backfill_updated', 0)}; chưa tìm được {report.get('image_backfill_unmatched', 0)}; lỗi {report.get('image_backfill_failed', 0)}",
-        f"Thời gian crawler: {_duration(report.get('duration_seconds'))}",
-        "",
-        "BÀI ĐÃ PUBLISH:",
+        f"ĐI ĐÂY ĐÓ - {date}",
+        _status_label(report, job_status, stage),
     ]
-    if articles:
-        lines.extend(f"- {item.get('title') or 'Bài mới'}: {item.get('url') or 'Không có URL'}" for item in articles if isinstance(item, dict))
+    if stage == "started":
+        lines.append("Crawler đã bắt đầu. Hệ thống đang thu thập nguồn và xử lý bài.")
+    elif stage == "progress":
+        lines.extend([
+            f"Đã xuất bản: {count} bài.",
+            f"Bài vừa đăng: {article_title or 'Bài viết mới'}",
+            article_url or "",
+            "Crawler vẫn đang tiếp tục; sẽ có email tổng kết khi kết thúc hoặc dừng do lỗi.",
+        ])
     else:
-        lines.append("- Không có bài nào được xác nhận publish.")
-    if feed_errors:
-        lines += ["", "NGUỒN RSS LỖI:"]
-        lines.extend(f"- {item.get('name')}: {item.get('error')}" for item in feed_errors if isinstance(item, dict))
-    if failures:
-        lines += ["", "BÀI/URL LỖI:"]
-        lines.extend(f"- {item.get('title')}: {item.get('reason')}" for item in failures if isinstance(item, dict))
-    lines += ["", "VIỆC TIẾP THEO:", _next_step(report, job_status)]
+        lines.extend([
+            f"Đã xuất bản: {count} bài.",
+            f"Bài lỗi: {report.get('failed_count', 0)}.",
+            f"RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi.",
+            "",
+            "BÀI ĐÃ XUẤT BẢN:",
+        ])
+        articles = report.get("articles") if isinstance(report.get("articles"), list) else []
+        lines.extend(
+            f"- {item.get('title') or 'Bài mới'}: {item.get('url') or ''}"
+            for item in articles if isinstance(item, dict)
+        )
+        failures = report.get("failures") if isinstance(report.get("failures"), list) else []
+        if failures:
+            lines += ["", "LỖI CẦN CHÚ Ý:"]
+            lines.extend(
+                f"- {item.get('title') or 'Bài viết'}: {_short_error(item.get('reason'))}"
+                for item in failures[:8] if isinstance(item, dict)
+            )
+        if report.get("fatal_error_reason") and not failures:
+            lines.append(_short_error(report.get("fatal_error_reason")))
     if run_url:
-        lines += ["", f"Chi tiết workflow: {run_url}"]
-    return "\n".join(lines)
+        lines.extend(["", f"Chi tiết workflow: {run_url}"])
+    return "\n".join(line for line in lines if line is not None)
 
 
-def _send_with_gmail(report: dict, job_status: str, recipients: list[str], run_url: str) -> bool:
+def _send_email(
+    report: dict,
+    job_status: str,
+    recipients: list[str],
+    run_url: str,
+    stage: str = "final",
+    article_title: str = "",
+    article_url: str = "",
+) -> bool:
+    subject = _subject(report, job_status, stage)
+    text_body = _build_text(report, job_status, run_url, stage, article_title, article_url)
+    html_body = _build_html(report, job_status, run_url, stage, article_title, article_url)
+
     username = os.getenv("GMAIL_USERNAME", "").strip()
     app_password = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
-    if not (username and app_password):
+    if username and app_password:
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = os.getenv("REPORT_EMAIL_FROM", "").strip() or username
+        message["To"] = ", ".join(recipients)
+        message.set_content(text_body)
+        message.add_alternative(html_body, subtype="html")
+        context = ssl.create_default_context()
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
+            smtp.ehlo()
+            smtp.starttls(context=context)
+            smtp.ehlo()
+            smtp.login(username, app_password)
+            smtp.send_message(message)
+        print(f"Đã gửi email ({stage}) qua Gmail tới {len(recipients)} địa chỉ.")
+        return True
+
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    sender = os.getenv("REPORT_EMAIL_FROM", "").strip()
+    if api_key and sender:
+        payload = {
+            "from": sender,
+            "to": recipients,
+            "subject": subject,
+            "html": html_body,
+            "text": text_body,
+        }
+        request = Request(
+            "https://api.resend.com/emails",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        with urlopen(request, timeout=25) as response:
+            response.read()
+            print(f"Đã gửi email ({stage}) qua Resend. HTTP {response.status}.")
+        return True
+
+    print("Email chưa được gửi: thiếu cấu hình Gmail SMTP hoặc Resend.")
+    return False
+
+
+def send_progress_notification(title: str, url: str = "", published_count: int = 1) -> bool:
+    """Send one progress email on the first confirmed publication in this run."""
+    global _PROGRESS_NOTIFICATION_SENT
+    if _PROGRESS_NOTIFICATION_SENT:
+        return False
+    _PROGRESS_NOTIFICATION_SENT = True
+
+    now = _now()
+    report = _load_report()
+    report.update({
+        "date": report.get("date") or now.strftime("%Y-%m-%d"),
+        "status": "running",
+        "published_count": max(1, int(published_count or 1)),
+        "minimum": int(os.getenv("MIN_DAILY_ARTICLES", "3")),
+        "preferred": int(os.getenv("PREFERRED_DAILY_ARTICLES", "5")),
+        "maximum": int(os.getenv("MAX_ARTICLES", "10")),
+        "site_url": report.get("site_url") or os.getenv("SITE_URL", ""),
+        "failed_count": int(report.get("failed_count") or 0),
+    })
+    try:
+        recipients = _recipients()
+        if not recipients:
+            print("Bỏ qua email tiến độ: chưa cấu hình REPORT_EMAIL_TO.")
+            return False
+        return _send_email(report, "in_progress", recipients, _run_url(), "progress", title, url)
+    except (smtplib.SMTPException, OSError, TimeoutError, HTTPError, URLError) as exc:
+        print(f"Không gửi được email tiến độ ({type(exc).__name__}); crawler vẫn tiếp tục.")
         return False
 
-    sender_header = os.getenv("REPORT_EMAIL_FROM", "").strip() or username
-    date = str(report.get("date") or "chưa có ngày")
-    count = int(report.get("published_count") or 0)
-    label, _ = _status(report, job_status)
-    subject = f"[Đi Đây Đó] {label} · {date} · {count} bài publish"
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = sender_header
-    message["To"] = ", ".join(recipients)
-    message.set_content(_build_text(report, job_status, run_url))
-    message.add_alternative(_build_html(report, job_status, run_url), subtype="html")
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.starttls(context=context)
-        smtp.ehlo()
-        smtp.login(username, app_password)
-        smtp.send_message(message)
-
-    print(f"Đã gửi email báo cáo chi tiết qua Gmail SMTP tới {len(recipients)} địa chỉ.")
-    return True
+def _write_summary(report: dict, job_status: str, run_url: str) -> None:
+    summary_path = os.getenv("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    date = report.get("date") or "không rõ ngày"
+    articles = report.get("articles") if isinstance(report.get("articles"), list) else []
+    lines = [
+        f"## Báo cáo crawler Đi Đây Đó - {date}",
+        f"- Kết luận: **{_status_label(report, job_status)}**",
+        f"- Đã xuất bản: **{report.get('published_count', 0)} bài**",
+        f"- Bài lỗi: **{report.get('failed_count', 0)}**",
+        f"- RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi",
+        f"- Thời gian: {_duration(report.get('duration_seconds'))}",
+    ]
+    for item in articles:
+        if isinstance(item, dict):
+            title = str(item.get("title") or "Bài viết mới")
+            url = str(item.get("url") or "")
+            lines.append(f"- [{title}]({url})" if url.startswith(("https://", "http://")) else f"- {title}")
+    if run_url:
+        lines.append(f"- [Mở workflow log]({run_url})")
+    try:
+        with open(summary_path, "a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--stage", choices=("started", "final"), default="final")
     parser.add_argument("--job-status", default=os.getenv("JOB_STATUS", "unknown"))
     args = parser.parse_args()
 
+    stage = args.stage
+    job_status = str(args.job_status or "unknown")
     report = _load_report()
-    report_missing = not bool(report)
-    if report_missing:
+
+    if stage == "started":
         report = {
-            "date": "Không tạo được báo cáo",
+            "date": _now().strftime("%Y-%m-%d"),
+            "status": "running",
+            "published_count": 0,
+            "failed_count": 0,
+            "minimum": int(os.getenv("MIN_DAILY_ARTICLES", "3")),
+            "preferred": int(os.getenv("PREFERRED_DAILY_ARTICLES", "5")),
+            "maximum": int(os.getenv("MAX_ARTICLES", "10")),
+            "site_url": os.getenv("SITE_URL", ""),
+            "articles": [],
+            "failures": [],
+        }
+    elif not report:
+        report = {
+            "date": _now().strftime("%Y-%m-%d"),
             "status": "report_missing",
             "published_count": 0,
+            "failed_count": 0,
             "minimum": 3,
             "preferred": 5,
             "maximum": 10,
             "articles": [],
-            "feed_errors": [],
             "failures": [],
+            "fatal_error_reason": "Crawler dừng trước khi ghi được báo cáo; mở log workflow để xem bước lỗi.",
         }
 
-    articles = report.get("articles") if isinstance(report.get("articles"), list) else []
-    count = int(report.get("published_count") or len(articles))
-    date = str(report.get("date") or "chưa có ngày")
-    job_status = str(args.job_status or "unknown")
     run_url = _run_url()
+    if stage == "final":
+        _write_summary(report, job_status, run_url)
 
-    # The GitHub run summary mirrors the key figures from the email.
-    summary_path = os.getenv("GITHUB_STEP_SUMMARY")
-    if summary_path:
-        summary = [
-            f"## Báo cáo crawler Đi Đây Đó - {date}",
-            f"- Kết luận: **{_status(report, job_status)[0]}**",
-            f"- Đã publish: **{count} bài** (mục tiêu {report.get('minimum', 3)}/{report.get('preferred', 5)}/{report.get('maximum', 10)})",
-            f"- RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi / {report.get('candidate_url_count', 0)} URL ứng viên",
-            f"- Xử lý: {report.get('attempted_url_count', 0)} URL đã thử / {report.get('processed_article_count', 0)} bài đã xử lý / {report.get('irrelevant_skipped_count', 0)} bài ngoài danh mục / {report.get('failed_count', 0)} bài lỗi",
-            f"- Ảnh bài cũ: rà {report.get('image_backfill_checked', 0)} / bổ sung {report.get('image_backfill_updated', 0)} / chưa tìm được {report.get('image_backfill_unmatched', 0)}",
-            f"- Thời gian: {_duration(report.get('duration_seconds'))}",
-        ]
-        for item in articles:
-            if isinstance(item, dict):
-                title = str(item.get("title") or "Bài viết mới")
-                url = str(item.get("url") or "")
-                summary.append(f"- [{title}]({url})" if url.startswith(("https://", "http://")) else f"- {title}")
-        if run_url:
-            summary.append(f"- [Mở workflow log]({run_url})")
-        try:
-            with open(summary_path, "a", encoding="utf-8") as handle:
-                handle.write("\n".join(summary) + "\n")
-        except OSError:
-            pass
-
-    recipient = os.getenv("REPORT_EMAIL_TO", "").strip()
-    recipients = [x.strip() for x in recipient.replace(";", ",").split(",") if x.strip()]
+    recipients = _recipients()
     if not recipients:
         print("Email chưa được gửi: hãy cấu hình REPORT_EMAIL_TO trong GitHub Secrets.")
-        print(f"Báo cáo vẫn có trong GitHub Actions Summary; job_status={job_status}, published={count}.")
         return 0
 
-    if os.getenv("GMAIL_USERNAME", "").strip() and os.getenv("GMAIL_APP_PASSWORD", "").strip():
-        try:
-            _send_with_gmail(report, job_status, recipients, run_url)
-            return 0
-        except smtplib.SMTPException as exc:
-            print(f"Gửi email qua Gmail SMTP thất bại: {type(exc).__name__}. Kiểm tra App Password và quyền tài khoản.")
-            return 1
-        except (OSError, TimeoutError) as exc:
-            print(f"Gửi email qua Gmail SMTP thất bại do kết nối: {type(exc).__name__}.")
-            return 1
-
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    sender = os.getenv("REPORT_EMAIL_FROM", "").strip()
-    if not (api_key and sender):
-        print("Email chưa được gửi: cần GMAIL_USERNAME + GMAIL_APP_PASSWORD hoặc RESEND_API_KEY + REPORT_EMAIL_FROM.")
-        print(f"Báo cáo vẫn có trong GitHub Actions Summary; job_status={job_status}, published={count}.")
-        return 0
-
-    payload = {
-        "from": sender,
-        "to": recipients,
-        "subject": f"[Đi Đây Đó] {_status(report, job_status)[0]} · {date} · {count} bài publish",
-        "html": _build_html(report, job_status, run_url),
-    }
-    request = Request(
-        "https://api.resend.com/emails",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=25) as response:
-            response.read()
-            print(f"Đã gửi email báo cáo chi tiết qua Resend. HTTP {response.status}.")
-            return 0
-    except HTTPError as exc:
-        print(f"Gửi email thất bại. Resend HTTP {exc.code}; kiểm tra API key, sender domain và recipient.")
-        return 1
-    except (URLError, TimeoutError) as exc:
-        print(f"Gửi email thất bại do kết nối: {type(exc).__name__}.")
+        sent = _send_email(report, job_status, recipients, run_url, stage)
+        return 0 if sent else 0
+    except (smtplib.SMTPException, OSError, TimeoutError, HTTPError, URLError) as exc:
+        print(f"Gửi email thất bại ({stage}): {type(exc).__name__}.")
         return 1
 
 
