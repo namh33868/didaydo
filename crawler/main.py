@@ -12,6 +12,7 @@ from html import escape as html_escape
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
+from threading import RLock
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlparse
 
@@ -125,6 +126,7 @@ _AI_PROVIDER_COOLDOWN_META = {}
 _AI_PROVIDER_FAILURE_COUNTS = {}
 _AI_PROVIDER_STATE_PATH = os.path.join(os.path.dirname(DATABASE_PATH), "ai_provider_state.json")
 _AI_PROVIDER_STATE_LOADED = False
+_AI_PROVIDER_STATE_LOCK = RLock()
 
 try:
     AI_MAX_CONSECUTIVE_FAILURES = max(
@@ -645,6 +647,7 @@ def _parse_feed_items(xml, source):
             "source_focus": source.get("focus", []),
             "allowed_domains": source.get("article_domains", []),
             "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+            "allow_source_images": source.get("allow_source_images", True),
         }
         results.append(item)
     return results
@@ -1069,18 +1072,19 @@ def _ensure_provider_state_loaded():
 
 
 def _save_provider_state():
-    """Persist cooldowns; GitHub Actions cache restores crawler/data between runs."""
+    """Persist cooldowns safely while parallel reviewers update provider state."""
     try:
-        os.makedirs(os.path.dirname(_AI_PROVIDER_STATE_PATH) or ".", exist_ok=True)
-        payload = {
-            "schema_version": 1,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "cooldowns": _AI_PROVIDER_COOLDOWN_META,
-        }
-        temporary_path = _AI_PROVIDER_STATE_PATH + ".tmp"
-        with open(temporary_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-        os.replace(temporary_path, _AI_PROVIDER_STATE_PATH)
+        with _AI_PROVIDER_STATE_LOCK:
+            os.makedirs(os.path.dirname(_AI_PROVIDER_STATE_PATH) or ".", exist_ok=True)
+            payload = {
+                "schema_version": 1,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "cooldowns": dict(_AI_PROVIDER_COOLDOWN_META),
+            }
+            temporary_path = _AI_PROVIDER_STATE_PATH + ".tmp"
+            with open(temporary_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            os.replace(temporary_path, _AI_PROVIDER_STATE_PATH)
     except OSError as exc:
         log.warning("Không lưu được trạng thái cooldown AI (%s).", type(exc).__name__)
 
@@ -1813,6 +1817,7 @@ def extract_article_metadata(item):
         "source_feed_url": item.get("source_feed_url", ""),
         "source_focus": item.get("source_focus", []),
         "permission_status": item.get("permission_status", "review_terms_before_commercial_reuse"),
+        "allow_source_images": item.get("allow_source_images", True),
         "rss_categories": item.get("rss_categories", []),
     }
     result.update(classify_article(result, item))
@@ -2602,6 +2607,11 @@ def _insert_inline_images(article, draft):
     SOURCE_IMAGE_REUSE_AUTHORIZED=true is explicitly set by the operator.
     """
     images = _image_list_from_article(article)
+    if article.get("allow_source_images") is False:
+        content = draft.get("seo_content", "") or ""
+        content = re.sub(r"<p>\s*\[\[IMAGE:IMG_\d{2}\]\]\s*</p>", "", content, flags=re.I)
+        draft["seo_content"] = re.sub(r"\[\[IMAGE:IMG_\d{2}\]\]", "", content)
+        return draft
     try:
         max_inline_images = max(1, min(int(os.getenv("SOURCE_ARTICLE_MAX_IMAGES", "4")), 6))
     except ValueError:
