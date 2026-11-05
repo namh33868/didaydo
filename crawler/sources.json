@@ -485,6 +485,31 @@
       ],
       "permission_status": "credit_required_review_commercial_terms",
       "notes": "Official RSS category linked from the magazine's RSS directory. Vietnamese hotel, resort and accommodation content. Retain source attribution and review commercial terms. Metadata/reference only."
+    },
+    {
+      "id": "vinpearl_travel_guide",
+      "name": "Vinpearl – Cẩm nang du lịch",
+      "homepage": "https://vinpearl.com/vi",
+      "feed_url": "https://vinpearl.com/vi/news/travel-guide",
+      "source_type": "html_listing",
+      "article_domains": [
+        "vinpearl.com"
+      ],
+      "language": "vi",
+      "enabled": true,
+      "allow_source_images": false,
+      "focus": [
+        "travel-guide",
+        "hotel-review",
+        "things-to-do",
+        "itinerary",
+        "beach-island",
+        "food-and-drink",
+        "travel-tips",
+        "destination-news"
+      ],
+      "permission_status": "metadata_and_reference_only",
+      "notes": "Nguồn danh sách bài chính thức dạng HTML vì chưa xác nhận RSS công khai. Chỉ dùng metadata và nội dung trang làm tư liệu tham khảo biên tập; không nhúng lại ảnh nguồn hoặc sao chép câu chữ khi chưa có quyền."
     }
   ]
 }
