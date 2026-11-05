@@ -65,6 +65,73 @@ def normalize_source_url(url: str) -> str:
     return parsed._replace(scheme="https", netloc=host, path=path or "/", params="", query="", fragment="").geturl()
 
 
+_SOURCE_CONFIG_CACHE: list[dict] | None = None
+
+
+def _normalise_host(host: str) -> str:
+    value = clean(host).lower().rstrip(".")
+    return value[4:] if value.startswith("www.") else value
+
+
+def _host_matches_domain(host: str, domain: str) -> bool:
+    candidate = _normalise_host(host)
+    allowed = _normalise_host(domain)
+    return bool(candidate and allowed and (candidate == allowed or candidate.endswith("." + allowed)))
+
+
+def _configured_sources() -> list[dict]:
+    global _SOURCE_CONFIG_CACHE
+    if _SOURCE_CONFIG_CACHE is None:
+        try:
+            config = json.loads((PROJECT_DIR / "sources.json").read_text(encoding="utf-8"))
+            raw_sources = config.get("sources", []) if isinstance(config, dict) else []
+            _SOURCE_CONFIG_CACHE = [item for item in raw_sources if isinstance(item, dict)]
+        except (OSError, TypeError, json.JSONDecodeError):
+            log.warning("Không đọc được sources.json khi xác định quyền dùng ảnh; chỉ dùng cờ metadata của bài.")
+            _SOURCE_CONFIG_CACHE = []
+    return _SOURCE_CONFIG_CACHE
+
+
+def _source_image_policy(article: dict) -> tuple[bool, list[str]]:
+    """Resolve source-photo permissions from the source registry and canonical URL.
+
+    The source registry wins over stale queued/cache metadata. Vinpearl is a hard
+    deny even if a historic article row says source-image reuse was allowed.
+    """
+    source_url = normalize_source_url(article.get("source_url", ""))
+    source_host = urlparse(source_url).hostname or ""
+    if _host_matches_domain(source_host, "vinpearl.com"):
+        return False, ["vinpearl.com"]
+
+    source_id = clean(article.get("source_id")).casefold()
+    matched = None
+    sources = _configured_sources()
+    if source_id:
+        matched = next((item for item in sources if clean(item.get("id")).casefold() == source_id), None)
+    if matched is None and source_host:
+        for item in sources:
+            domains = item.get("article_domains") or item.get("allowed_domains") or []
+            if any(_host_matches_domain(source_host, domain) for domain in domains):
+                matched = item
+                break
+
+    explicit_allowed = article.get("allow_source_images") is not False
+    if matched is not None:
+        configured_allowed = matched.get("allow_source_images", True) is not False
+        domains = [
+            _normalise_host(domain)
+            for domain in (matched.get("article_domains") or matched.get("allowed_domains") or [])
+            if _normalise_host(domain)
+        ]
+        if not explicit_allowed or not configured_allowed:
+            return False, domains or ([_normalise_host(source_host)] if source_host else [])
+        return True, []
+
+    if not explicit_allowed:
+        return False, [_normalise_host(source_host)] if source_host else []
+    return True, []
+
+
 def _enabled() -> bool:
     return SITE_SYNC_ENABLED and bool(SITE_URL) and bool(SITE_INGEST_API_KEY)
 
@@ -406,6 +473,69 @@ def _normalize_source_image_url(value: str, base_url: str = "") -> str:
     return parsed._replace(scheme="https", fragment="").geturl()
 
 
+
+def _strip_disallowed_source_images_from_draft(
+    draft: dict | None,
+    source_url: str,
+    stored_images: list[dict],
+    blocked_domains: list[str],
+) -> None:
+    """Remove blocked source-photo embeds and their figures from queued drafts."""
+    if not isinstance(draft, dict) or not draft.get("seo_content"):
+        return
+
+    known_urls: set[str] = set()
+    for item in stored_images:
+        if not isinstance(item, dict):
+            continue
+        for field in ("original_url", "url"):
+            value = clean(item.get(field))
+            if value:
+                known_urls.add(value.casefold())
+                normalized = _normalize_source_image_url(value, source_url)
+                if normalized:
+                    known_urls.add(normalized.casefold())
+
+    soup = BeautifulSoup(str(draft.get("seo_content") or ""), "html.parser")
+    for image_tag in list(soup.find_all("img")):
+        values = [
+            clean(image_tag.get("src")),
+            clean(image_tag.get("data-src")),
+            clean(image_tag.get("data-lazy-src")),
+            clean(image_tag.get("srcset")),
+            clean(image_tag.get("data-srcset")),
+        ]
+        blocked = False
+        for value in (item for item in values if item):
+            if value.casefold() in known_urls or any(url in value.casefold() for url in known_urls):
+                blocked = True
+                break
+            normalized = _normalize_source_image_url(value, source_url)
+            host = urlparse(normalized).hostname or "" if normalized else ""
+            if any(_host_matches_domain(host, domain) for domain in blocked_domains):
+                blocked = True
+                break
+        if blocked:
+            wrapper = image_tag.find_parent("figure") or image_tag.find_parent("picture")
+            if wrapper:
+                wrapper.decompose()
+            else:
+                image_tag.decompose()
+
+    for text_node in list(soup.find_all(string=re.compile(r"\\[\\[IMAGE:IMG_\\d{2}\\]\\]", re.I))):
+        cleaned = re.sub(r"\\[\\[IMAGE:IMG_\\d{2}\\]\\]", "", str(text_node), flags=re.I)
+        if cleaned:
+            text_node.replace_with(cleaned)
+        else:
+            parent = text_node.parent
+            if parent and parent.name == "p" and not clean(parent.get_text(" ", strip=True)):
+                parent.decompose()
+            else:
+                text_node.extract()
+
+    draft["seo_content"] = "".join(str(child) for child in soup.contents)
+
+
 def _persist_source_image_metadata(article: dict, db_path: str, images: list[dict]) -> None:
     source_url = normalize_source_url(article.get("source_url", ""))
     if not source_url:
@@ -435,9 +565,12 @@ def _ensure_source_article_images(
     from image_optimizer import build_vietnamese_alt_text
 
     source_url = normalize_source_url(article.get("source_url", ""))
-    source_images_allowed = article.get("allow_source_images") is not False
-    stored_images = _stored_image_list(article) if source_images_allowed else []
-    if source_images_allowed and not stored_images and source_url:
+    source_images_allowed, blocked_source_domains = _source_image_policy(article)
+    article["allow_source_images"] = source_images_allowed
+
+    # Read old photo metadata even for blocked sources so cached embeds can be removed.
+    stored_images = _stored_image_list(article)
+    if not stored_images and source_url:
         try:
             with sqlite3.connect(db_path, timeout=30) as conn:
                 row = conn.execute(
@@ -450,6 +583,24 @@ def _ensure_source_article_images(
                     stored_images = [item for item in decoded if isinstance(item, dict)]
         except (sqlite3.Error, TypeError, json.JSONDecodeError):
             log.debug("Không đọc được metadata ảnh nguồn cho %s", source_url)
+
+    source_photo_urls: set[str] = set()
+    for item in stored_images:
+        if not isinstance(item, dict):
+            continue
+        for field in ("original_url", "url"):
+            raw_url = clean(item.get(field))
+            if raw_url:
+                source_photo_urls.add(raw_url)
+                normalized = _normalize_source_image_url(raw_url, source_url)
+                if normalized:
+                    source_photo_urls.add(normalized)
+
+    if not source_images_allowed:
+        _strip_disallowed_source_images_from_draft(
+            draft, source_url, stored_images, blocked_source_domains
+        )
+        stored_images = []
 
     body_images = [
         item for item in stored_images
@@ -469,6 +620,10 @@ def _ensure_source_article_images(
         or "Bài viết nguồn"
     )
     search_article = dict(article)
+    if not source_images_allowed:
+        # Source photos are not used as visual-search/Lens reference assets either.
+        search_article["source_images"] = []
+        search_article["source_images_json"] = "[]"
     if isinstance(draft, dict):
         search_article["visual_search_title"] = clean(
             draft.get("seo_title") or article.get("source_title")
@@ -578,7 +733,11 @@ def _ensure_source_article_images(
 
     # Only reach the external image providers when the source article (including
     # OG/RSS image fallback) contains no usable image URL.
-    external = find_cover_image(search_article)
+    external = find_cover_image(
+        search_article,
+        exclude_urls=source_photo_urls,
+        exclude_domains=blocked_source_domains,
+    )
     if not isinstance(external, dict):
         log.warning("Bài nguồn không có ảnh và không tìm được ảnh ngoài phù hợp: %s", source_url)
         return None
@@ -587,6 +746,10 @@ def _ensure_source_article_images(
     external_url = _normalize_source_image_url(external.get("url"), external.get("source_page_url") or source_url)
     if not external_url:
         log.warning("Ảnh ngoài trả về URL không hợp lệ: %s", source_url)
+        return None
+    external_host = urlparse(external_url).hostname or ""
+    if any(_host_matches_domain(external_host, domain) for domain in blocked_source_domains):
+        log.warning("Từ chối ảnh thay thế vẫn nằm trên domain nguồn bị chặn: %s", external_host)
         return None
 
     external["original_url"] = clean(external.get("url"))
