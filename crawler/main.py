@@ -116,7 +116,7 @@ try:
         5, min(int(os.getenv("AI_PROVIDER_COOLDOWN_SECONDS", "45")), 900)
     )
 except ValueError:
-    AI_PROVIDER_COOLDOWN_SECONDS = 120
+    AI_PROVIDER_COOLDOWN_SECONDS = 45
 
 # Provider state is scoped to one crawler process. Daily quota/auth failures stay
 # disabled for this run; transient rate limits and truncated output get a cooldown.
@@ -133,7 +133,7 @@ try:
         1, min(int(os.getenv("AI_MAX_CONSECUTIVE_FAILURES", "3")), 5)
     )
 except ValueError:
-    AI_MAX_CONSECUTIVE_FAILURES = 2
+    AI_MAX_CONSECUTIVE_FAILURES = 3
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
@@ -744,7 +744,7 @@ def _fetch_one_source_feed(source):
 
 
 def discover_from_sources():
-    """Read configured English-language RSS/Atom feeds concurrently and interleave candidates."""
+    """Read configured RSS/Atom feeds and HTML listings concurrently, then interleave candidates."""
     global LAST_DISCOVERY_REPORT
     discovery_report = {
         "enabled_sources": 0,
