@@ -205,6 +205,43 @@ class HtmlSourceTests(unittest.TestCase):
         self.assertNotIn("image-rights-review", result["seo_content"])
         self.assertNotIn("<figure", result["seo_content"])
 
+    def test_unapproved_source_images_are_not_used_as_cover(self):
+        import site_publisher
+
+        source_image = {
+            "url": "https://vinpearl.com/sites/default/files/source-photo.jpg",
+            "placement_source": "article_body",
+            "image_id": "IMG_01",
+            "position_index": 1,
+        }
+        external_cover = {
+            "url": "https://images.example.test/licensed-cover.jpg",
+            "provider": "Openverse",
+            "source_page_url": "https://images.example.test/photo",
+            "creator": "Test photographer",
+            "license": "CC0",
+            "title": "Vietnam coastal landscape",
+        }
+        article = {
+            "source_url": "https://vinpearl.com/vi/sample-travel-story",
+            "source_title": "Cẩm nang du lịch Việt Nam",
+            "source_name": "Vinpearl",
+            "source_images": [source_image],
+            "allow_source_images": False,
+        }
+
+        with (
+            patch.object(site_publisher, "_stored_image_list", return_value=[source_image]) as stored_images,
+            patch("image_finder.find_cover_image", return_value=external_cover) as external_search,
+            patch("image_optimizer.build_vietnamese_alt_text", return_value="Ảnh minh họa bờ biển Việt Nam"),
+        ):
+            selected = site_publisher._ensure_source_article_images(article, ":memory:")
+
+        stored_images.assert_not_called()
+        external_search.assert_called_once()
+        self.assertEqual(selected["cover_role"], "external_fallback_cover")
+        self.assertEqual(selected["provider"], "Openverse")
+
 
 if __name__ == "__main__":
     unittest.main()
