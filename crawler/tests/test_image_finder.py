@@ -7,6 +7,7 @@ from image_finder import (
     _article_context_terms,
     _best_original_image,
     _rank_candidates,
+    find_cover_image,
     is_license_allowed,
 )
 
@@ -218,6 +219,44 @@ class ArticleImageRelevanceTests(unittest.TestCase):
              patch("image_finder.requests.get", return_value=FakeResponse()):
             result = _license_from_landing_page("https://example.com/image")
         self.assertIsNone(result)
+
+    def test_cover_search_excludes_blocked_source_domains(self):
+        candidates = [
+            {
+                "url": "https://media.vinpearl.com/ha-long-bay.jpg",
+                "title": "Ha Long Bay Vietnam landscape",
+                "description": "Ha Long Bay",
+                "tags_text": "bay landscape Vietnam",
+                "width": 1800,
+                "height": 1000,
+            },
+            {
+                "url": "https://images.example.net/ha-long-bay.jpg",
+                "title": "Ha Long Bay Vietnam landscape",
+                "description": "Ha Long Bay",
+                "tags_text": "bay landscape Vietnam",
+                "width": 1800,
+                "height": 1000,
+            },
+        ]
+        article = {
+            "source_title": "Khám phá vịnh Hạ Long",
+            "visual_search_title": "Khám phá vịnh Hạ Long",
+            "visual_search_summary": "Cảnh quan vịnh Hạ Long và các trải nghiệm tham quan.",
+            "destination_city": "Hạ Long",
+            "destination_country": "Vietnam",
+            "primary_category": "travel-guide",
+        }
+        with (
+            patch("image_finder.SERPAPI_API_KEY", "test-key"),
+            patch("image_finder._google_visual_candidates", return_value=candidates),
+            patch("image_finder._rank_candidates", side_effect=lambda values, *args, **kwargs: values),
+            patch("image_finder.verify_image_url", return_value=True),
+        ):
+            result = find_cover_image(article, exclude_domains={"vinpearl.com"})
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["url"], "https://images.example.net/ha-long-bay.jpg")
 
     def test_only_commercial_friendly_licenses_are_allowed(self):
         self.assertTrue(is_license_allowed("CC BY 4.0"))
