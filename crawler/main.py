@@ -2076,7 +2076,7 @@ def _call_openai(instructions, input_data):
     return response.choices[0].message.content or ""
 
 
-def _call_groq(instructions, input_data):
+def _call_groq(instructions, input_data, max_completion_tokens=None):
     """Call Groq via its OpenAI-compatible endpoint, using a distinct GROQ_API_KEY."""
     from openai import OpenAI
 
@@ -2094,7 +2094,7 @@ def _call_groq(instructions, input_data):
         ],
         response_format={"type": "json_object"},
         temperature=0.3,
-        max_completion_tokens=GROQ_MAX_OUTPUT_TOKENS,
+        max_completion_tokens=max_completion_tokens or GROQ_MAX_OUTPUT_TOKENS,
     )
     if not response.choices:
         raise ValueError("Groq trả về 0 choices")
@@ -2105,7 +2105,7 @@ def _call_groq(instructions, input_data):
     return content
 
 
-def _call_openrouter(instructions, input_data):
+def _call_openrouter(instructions, input_data, max_tokens=None):
     from openai import OpenAI
 
     client = OpenAI(
@@ -2125,7 +2125,7 @@ def _call_openrouter(instructions, input_data):
             {"role": "user", "content": json.dumps(input_data, ensure_ascii=False)},
         ],
         temperature=0.4,
-        max_tokens=AI_MAX_OUTPUT_TOKENS,
+        max_tokens=max_tokens or AI_MAX_OUTPUT_TOKENS,
     )
     if not response.choices:
         raise ValueError("OpenRouter trả về 0 choices")
@@ -2165,6 +2165,211 @@ def _groq_request_input(input_data, max_chars=None):
         payload["source_reference_chars"] = len(payload["source_reference_material"])
         payload["source_reference_truncated"] = True
     return payload
+
+
+
+SEO_REVIEW_INSTRUCTIONS = """
+Bạn là biên tập viên SEO tiếng Việt cho một trang tin du lịch.
+Đánh giá bản nháp theo ý định tìm kiếm, độ rõ tiêu đề, meta description, mức khớp từ khóa, cấu trúc heading và giá trị thực dụng.
+Không nhồi từ khóa, không bịa dữ kiện, không tối ưu máy móc. Không coi điểm số là thứ hạng Google.
+Nếu metadata đang tốt thì có thể giữ nguyên. Chỉ chọn từ khóa thực sự phù hợp với nội dung.
+Trả về DUY NHẤT JSON:
+{
+  "score": 0,
+  "seo_title": "Tiêu đề SEO tiếng Việt",
+  "meta_description": "Mô tả SEO tiếng Việt",
+  "primary_keyword": "từ khóa chính",
+  "secondary_keywords": ["từ khóa phụ 1", "từ khóa phụ 2", "từ khóa phụ 3"],
+  "critical_issues": ["vấn đề thật sự cần sửa"],
+  "improvements": ["gợi ý ngắn, cụ thể"]
+}
+""".strip()
+
+
+FACT_REVIEW_INSTRUCTIONS = """
+Bạn là biên tập viên kiểm tra độ trung thực của bài du lịch.
+Chỉ đối chiếu bản nháp với tài liệu nguồn được cung cấp; KHÔNG tuyên bố đã xác minh độc lập trên Internet.
+Nêu thông tin trong bản nháp không được nguồn hỗ trợ, mâu thuẫn với nguồn, hoặc có thể thay đổi theo thời gian như giá, giờ mở cửa, lịch trình, quy định, vé.
+Không tự thêm dữ kiện. Nếu không thấy vấn đề có căn cứ thì để danh sách rỗng.
+Trả về DUY NHẤT JSON:
+{
+  "risk_level": "low|medium|high",
+  "unsupported_claims": ["..."],
+  "contradictions": ["..."],
+  "time_sensitive_claims": ["..."],
+  "notes": "Ghi chú biên tập ngắn bằng tiếng Việt"
+}
+""".strip()
+
+
+def _review_payload(article, draft, max_source_chars, max_draft_chars):
+    body = BeautifulSoup(draft.get("seo_content", "") or "", "html.parser")
+    draft_text = clean_text(body.get_text(" ", strip=True))
+    headings = [
+        clean_text(node.get_text(" ", strip=True))[:160]
+        for node in body.find_all(["h2", "h3"])[:16]
+    ]
+    source_text = article.get("source_body") or ""
+    return {
+        "source_title": clean_text(article.get("source_title", ""))[:500],
+        "source_summary": clean_text(article.get("source_summary", ""))[:1200],
+        "source_url": clean_text(article.get("source_url", ""))[:1000],
+        "source_reference_excerpt": _prepare_source_reference_text(source_text, max_source_chars) if source_text else "",
+        "draft_title": clean_text(draft.get("seo_title", ""))[:200],
+        "draft_meta_description": clean_text(draft.get("seo_description", ""))[:500],
+        "draft_primary_keyword": clean_text(draft.get("primary_keyword", ""))[:150],
+        "draft_secondary_keywords": draft.get("secondary_keywords", "[]"),
+        "draft_headings": headings,
+        "draft_text_excerpt": _prepare_source_reference_text(draft_text, max_draft_chars),
+    }
+
+
+def _run_one_editorial_review(role, provider, instructions, payload):
+    if provider == "Groq":
+        raw = _call_groq(instructions, payload, max_completion_tokens=700)
+    elif provider == "OpenRouter":
+        raw = _call_openrouter(instructions, payload, max_tokens=700)
+    else:
+        raise ValueError(f"Provider không hỗ trợ vai trò biên tập: {provider}")
+    data = _load_json_object(raw, provider, f"{role}-review")
+    if role == "seo":
+        try:
+            score = max(0, min(100, int(data.get("score", 0))))
+        except (TypeError, ValueError):
+            score = 0
+        keywords = data.get("secondary_keywords", [])
+        if not isinstance(keywords, list):
+            keywords = []
+        return {
+            "score": score,
+            "seo_title": clean_text(data.get("seo_title", ""))[:200],
+            "meta_description": clean_text(data.get("meta_description", ""))[:500],
+            "primary_keyword": clean_text(data.get("primary_keyword", ""))[:150],
+            "secondary_keywords": [clean_text(x)[:100] for x in keywords[:6] if isinstance(x, str) and clean_text(x)],
+            "critical_issues": [clean_text(x)[:180] for x in (data.get("critical_issues") or [])[:6] if isinstance(x, str) and clean_text(x)],
+            "improvements": [clean_text(x)[:180] for x in (data.get("improvements") or [])[:6] if isinstance(x, str) and clean_text(x)],
+        }
+    unsupported = data.get("unsupported_claims", [])
+    contradictions = data.get("contradictions", [])
+    time_sensitive = data.get("time_sensitive_claims", [])
+    return {
+        "risk_level": clean_text(data.get("risk_level", "medium")).lower()[:20],
+        "unsupported_claims": [clean_text(x)[:220] for x in unsupported[:8] if isinstance(x, str) and clean_text(x)] if isinstance(unsupported, list) else [],
+        "contradictions": [clean_text(x)[:220] for x in contradictions[:8] if isinstance(x, str) and clean_text(x)] if isinstance(contradictions, list) else [],
+        "time_sensitive_claims": [clean_text(x)[:220] for x in time_sensitive[:8] if isinstance(x, str) and clean_text(x)] if isinstance(time_sensitive, list) else [],
+        "notes": clean_text(data.get("notes", ""))[:700],
+    }
+
+
+def _run_parallel_editorial_reviews(article, draft, writer_provider):
+    """Groq audits SEO while OpenRouter checks source fidelity; the two independent jobs run concurrently."""
+    jobs = {}
+    if GROQ_API_KEY and writer_provider != "Groq" and not _provider_unavailable_reason("Groq"):
+        jobs["seo"] = ("Groq", SEO_REVIEW_INSTRUCTIONS, _review_payload(article, draft, 2200, 5000))
+    if OPENROUTER_API_KEY and writer_provider != "OpenRouter" and not _provider_unavailable_reason("OpenRouter"):
+        jobs["fact"] = ("OpenRouter", FACT_REVIEW_INSTRUCTIONS, _review_payload(article, draft, 3400, 4000))
+    if not jobs:
+        log.info("Bỏ qua editorial review: không còn reviewer khả dụng sau bước viết bài.")
+        return {}
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        futures = {
+            pool.submit(_run_one_editorial_review, role, provider, prompt, payload): role
+            for role, (provider, prompt, payload) in jobs.items()
+        }
+        for future, role in futures.items():
+            provider = jobs[role][0]
+            try:
+                results[role] = future.result()
+                results[role]["provider"] = provider
+                _clear_provider_cooldown(provider)
+                log.info("AI editorial role=%s provider=%s completed", role, provider)
+            except Exception as exc:
+                _record_provider_failure(provider, exc)
+                log.warning(
+                    "AI editorial role=%s provider=%s failed; retaining writer draft (%s): %s",
+                    role, provider, type(exc).__name__, clean_text(str(exc))[:180],
+                )
+                results[role] = {"status": "failed", "provider": provider, "reason": clean_text(str(exc))[:180]}
+    return results
+
+
+def _apply_editorial_reviews(draft, reviews):
+    """Apply safe metadata suggestions and retain source-review warnings for editors."""
+    seo = reviews.get("seo") if isinstance(reviews, dict) else None
+    if isinstance(seo, dict) and seo.get("score", 0) >= 65:
+        plain = clean_text(BeautifulSoup(draft.get("seo_content", ""), "html.parser").get_text(" ", strip=True))
+        keyword = clean_text(seo.get("primary_keyword", ""))
+        title = clean_text(seo.get("seo_title", ""))
+        description = clean_text(seo.get("meta_description", ""))
+        if keyword and keyword.casefold() in plain.casefold() and title and 30 <= len(title) <= 70:
+            draft["seo_title"] = title
+            draft["primary_keyword"] = keyword
+            if description and 100 <= len(description) <= 180:
+                draft["seo_description"] = description
+            secondary = seo.get("secondary_keywords") or []
+            if 3 <= len(secondary) <= 6:
+                draft["secondary_keywords"] = json.dumps(secondary, ensure_ascii=False)
+        draft["seo_editor_score"] = seo.get("score", 0)
+        notes = seo.get("critical_issues", []) + seo.get("improvements", [])
+        if notes:
+            existing = clean_text(draft.get("fact_check_notes", ""))
+            note = "Rà soát SEO (điểm biên tập, không phải thứ hạng Google): " + "; ".join(notes[:5])
+            draft["fact_check_notes"] = (existing + " " + note).strip()[:1800]
+
+    fact = reviews.get("fact") if isinstance(reviews, dict) else None
+    if isinstance(fact, dict) and fact.get("status") != "failed":
+        issues = fact.get("unsupported_claims", []) + fact.get("contradictions", [])
+        time_sensitive = fact.get("time_sensitive_claims", [])
+        if issues or time_sensitive or fact.get("notes"):
+            existing = clean_text(draft.get("fact_check_notes", ""))
+            parts = []
+            if issues:
+                parts.append("Điểm cần đối chiếu nguồn: " + "; ".join(issues[:4]))
+            if time_sensitive:
+                parts.append("Thông tin dễ thay đổi cần kiểm tra trước xuất bản: " + "; ".join(time_sensitive[:4]))
+            if fact.get("notes"):
+                parts.append(fact["notes"])
+            note = f"Rà soát nguồn OpenRouter (rủi ro {fact.get('risk_level', 'medium')}; không xác minh ngoài nguồn): " + " ".join(parts)
+            draft["fact_check_notes"] = (existing + " " + note).strip()[:1800]
+        draft["source_fidelity_risk"] = fact.get("risk_level", "medium")
+    return draft
+
+
+def _evaluate_seo_quality(draft):
+    """Editorial SEO checklist; the score is not a Google ranking prediction."""
+    soup = BeautifulSoup(draft.get("seo_content", "") or "", "html.parser")
+    plain = clean_text(soup.get_text(" ", strip=True))
+    words = re.findall(r"[^\\W_]+", plain, flags=re.UNICODE)
+    headings = soup.find_all(["h2", "h3"])
+    paragraphs = soup.find_all("p")
+    title = clean_text(draft.get("seo_title", ""))
+    description = clean_text(draft.get("seo_description", ""))
+    primary = clean_text(draft.get("primary_keyword", ""))
+    try:
+        secondary = json.loads(draft.get("secondary_keywords") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        secondary = []
+    checks = {
+        "word_count": len(words),
+        "heading_count": len(headings),
+        "paragraph_count": len(paragraphs),
+        "title_length": len(title),
+        "meta_description_length": len(description),
+        "primary_keyword_present": bool(primary and primary.casefold() in (title + " " + plain).casefold()),
+        "primary_keyword_early": bool(primary and primary.casefold() in " ".join(words[:120]).casefold()),
+        "secondary_keyword_count": len(secondary) if isinstance(secondary, list) else 0,
+    }
+    score = 100
+    if len(words) < 350: score -= 20
+    if len(headings) < 2: score -= 15
+    if len(paragraphs) < 4: score -= 10
+    if not 30 <= len(title) <= 70: score -= 10
+    if not 100 <= len(description) <= 180: score -= 10
+    if not checks["primary_keyword_present"]: score -= 15
+    if not checks["primary_keyword_early"]: score -= 10
+    if checks["secondary_keyword_count"] < 3: score -= 10
+    return max(0, score), checks
 
 
 def _configured_ai_providers(instructions, input_data):
