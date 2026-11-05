@@ -653,11 +653,87 @@ def _parse_feed_items(xml, source):
 LAST_DISCOVERY_REPORT = {}
 
 
+def _parse_html_listing_items(html, source):
+    """Parse article cards from an official HTML listing when a source has no public RSS."""
+    listing_url = source.get("feed_url") or source.get("listing_url") or source.get("homepage", "")
+    language = str(source.get("language", "vi")).lower().split("-")[0]
+    soup = BeautifulSoup(html, "html.parser")
+    results, seen = [], set()
+    excluded_slugs = {
+        "news", "travel-guide", "tin-tuc", "cam-nang-du-lich", "hotel", "hotels",
+        "offers", "contact", "about-us", "search", "booking", "terms",
+    }
+    for anchor in soup.find_all("a", href=True):
+        title = clean_text(anchor.get_text(" ", strip=True))
+        if len(title) < 12:
+            continue
+        link_url = normalize_url(urljoin(listing_url, anchor.get("href", "")))
+        if not link_url or link_url in seen or not _url_allowed_for_source(link_url, source):
+            continue
+        path_parts = [part for part in urlparse(link_url).path.split("/") if part]
+        # Vinpearl's article detail pages use /vi/<slug>; category and product pages
+        # have additional path segments and are deliberately excluded.
+        if len(path_parts) != 2 or path_parts[0].lower() != language:
+            continue
+        slug = path_parts[1].lower()
+        if slug in excluded_slugs or len(slug) < 12:
+            continue
+
+        card = anchor
+        card_text = ""
+        published = ""
+        image_url = ""
+        # The listing's newest-article cards expose a publication date next to
+        # title/summary; requiring it avoids treating navigation links as articles.
+        for _ in range(5):
+            card_text = clean_text(card.get_text(" ", strip=True))
+            date_match = re.search(r"\b(\d{1,2}/\d{1,2}/20\d{2})\b", card_text)
+            if date_match and len(card_text) >= len(title) + 8:
+                published = date_match.group(1)
+                image = card.find("img")
+                if image:
+                    image_url = image.get("src") or image.get("data-src") or image.get("data-lazy-src") or ""
+                break
+            if getattr(card, "parent", None) is None:
+                break
+            card = card.parent
+        if not published:
+            continue
+        seen.add(link_url)
+        summary = card_text.replace(title, " ", 1)
+        summary = re.sub(r"\b\d{1,2}/\d{1,2}/20\d{2}\b", " ", summary)
+        summary = clean_text(summary)[:1200]
+        item = {
+            "source_url": link_url,
+            "rss_title": title[:500],
+            "rss_summary": summary,
+            "rss_published_at": published[:120],
+            "rss_categories": [],
+            "rss_image_url": urljoin(listing_url, image_url) if image_url else None,
+            "source_id": source.get("id", ""),
+            "source_name": source.get("name", ""),
+            "source_homepage": source.get("homepage", ""),
+            "source_feed_url": listing_url,
+            "source_domain": _source_domain(source, link_url),
+            "source_language": language,
+            "source_focus": source.get("focus", []),
+            "allowed_domains": source.get("article_domains", []),
+            "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+        }
+        results.append(item)
+        if len(results) >= MAX_FEED_ITEMS_PER_SOURCE:
+            break
+    return results
+
+
 def _fetch_one_source_feed(source):
     name = source.get("name", source.get("id", "unknown"))
     try:
-        xml = fetch(source["feed_url"], timeout=12, attempts=1)
-        items = _parse_feed_items(xml, source)
+        content = fetch(source["feed_url"], timeout=12, attempts=1)
+        if str(source.get("source_type", "rss")).lower() == "html_listing":
+            items = _parse_html_listing_items(content, source)
+        else:
+            items = _parse_feed_items(content, source)
         return source, items, None
     except Exception as exc:
         return source, [], f"{type(exc).__name__}: {clean_text(str(exc))[:180]}"
