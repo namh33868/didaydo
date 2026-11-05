@@ -841,6 +841,7 @@ def discover_from_sources():
                 "source_focus": source.get("focus", []),
                 "allowed_domains": source.get("article_domains") or source.get("allowed_domains", []),
                 "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+                "allow_source_images": source.get("allow_source_images", True),
             })
     except sqlite3.Error as exc:
         log.warning("Không nạp được hàng đợi AI lỗi từ SQLite (%s); vẫn crawl RSS mới.", type(exc).__name__)
