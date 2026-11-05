@@ -83,6 +83,29 @@ class AdaptiveCooldownTests(unittest.TestCase):
         self.assertIn("Gemini", main._AI_PROVIDERS_DISABLED_FOR_RUN)
 
 
+class IndependentWriterPromptTests(unittest.TestCase):
+    def test_blocked_source_images_are_not_given_to_writer_as_publishable_assets(self):
+        article = {
+            "source_title": "Kinh nghiệm du lịch Hạ Long",
+            "source_summary": "Gợi ý khám phá Hạ Long.",
+            "source_url": "https://www.vinpearl.com/vi/kinh-nghiem-du-lich-ha-long",
+            "source_body": "Thông tin về điểm đến và các lưu ý thực tế. " * 20,
+            "allow_source_images": False,
+            "source_images": [{
+                "image_id": "IMG_01",
+                "url": "https://www.vinpearl.com/image.jpg",
+                "alt": "Vịnh Hạ Long",
+            }],
+        }
+        instructions, payload = main._ai_instructions_and_input(article)
+
+        self.assertFalse(payload["allow_source_images"])
+        self.assertEqual(payload["inline_image_catalog"], [])
+        self.assertIn("góc tiếp cận riêng", instructions)
+        self.assertIn("giá trị biên tập vượt quá việc thuật lại nguồn", instructions)
+        self.assertIn("không chèn marker", instructions)
+
+
 class ParallelEditorialTests(unittest.TestCase):
     def test_groq_and_openrouter_reviews_run_concurrently(self):
         barrier = threading.Barrier(2)
