@@ -795,7 +795,20 @@ def _image_key(url: str) -> str:
     except ValueError:
         return _plain(url).casefold()
 
-def find_cover_image(article: dict, exclude_urls: set[str] | None = None) -> dict | None:
+def _matches_excluded_domain(url: str, domains: set[str] | list[str] | None) -> bool:
+    host = (urlsplit(_plain(url)).hostname or "").lower().rstrip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    for domain in domains or []:
+        blocked = _plain(domain).lower().rstrip(".")
+        if blocked.startswith("www."):
+            blocked = blocked[4:]
+        if blocked and (host == blocked or host.endswith("." + blocked)):
+            return True
+    return False
+
+
+def find_cover_image(article: dict, exclude_urls: set[str] | None = None, exclude_domains: set[str] | list[str] | None = None) -> dict | None:
     """Find a licensed photo that matches the original article subject and image context."""
     article = article or {}
     place_terms = _destination_terms(article)
@@ -828,7 +841,7 @@ def find_cover_image(article: dict, exclude_urls: set[str] | None = None) -> dic
             require_context=True,
         )
         for candidate in ranked_google:
-            if _image_key(candidate.get("url", "")) in excluded:
+            if _image_key(candidate.get("url", "")) in excluded or _matches_excluded_domain(candidate.get("url", ""), exclude_domains):
                 continue
             if verify_image_url(candidate.get("url", "")):
                 scope = "exact_destination" if candidate.get("_place_match") else "topic_specific"
@@ -854,7 +867,7 @@ def find_cover_image(article: dict, exclude_urls: set[str] | None = None) -> dic
                 log.warning("%s article-specific image search failed (%s)", provider_name, type(exc).__name__)
                 continue
             for candidate in ranked:
-                if _image_key(candidate.get("url", "")) in excluded:
+                if _image_key(candidate.get("url", "")) in excluded or _matches_excluded_domain(candidate.get("url", ""), exclude_domains):
                     continue
                 if verify_image_url(candidate.get("url", "")):
                     scope = "exact_destination" if candidate.get("_place_match") else "topic_specific"
