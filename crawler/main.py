@@ -10,7 +10,8 @@ import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from html import escape as html_escape
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlparse
 
@@ -111,7 +112,7 @@ except ValueError:
 
 try:
     AI_PROVIDER_COOLDOWN_SECONDS = max(
-        30, min(int(os.getenv("AI_PROVIDER_COOLDOWN_SECONDS", "120")), 900)
+        5, min(int(os.getenv("AI_PROVIDER_COOLDOWN_SECONDS", "45")), 900)
     )
 except ValueError:
     AI_PROVIDER_COOLDOWN_SECONDS = 120
@@ -120,10 +121,14 @@ except ValueError:
 # disabled for this run; transient rate limits and truncated output get a cooldown.
 _AI_PROVIDERS_DISABLED_FOR_RUN = {}
 _AI_PROVIDER_COOLDOWN_UNTIL = {}
+_AI_PROVIDER_COOLDOWN_META = {}
+_AI_PROVIDER_FAILURE_COUNTS = {}
+_AI_PROVIDER_STATE_PATH = os.path.join(os.path.dirname(DATABASE_PATH), "ai_provider_state.json")
+_AI_PROVIDER_STATE_LOADED = False
 
 try:
     AI_MAX_CONSECUTIVE_FAILURES = max(
-        1, min(int(os.getenv("AI_MAX_CONSECUTIVE_FAILURES", "2")), 5)
+        1, min(int(os.getenv("AI_MAX_CONSECUTIVE_FAILURES", "3")), 5)
     )
 except ValueError:
     AI_MAX_CONSECUTIVE_FAILURES = 2
@@ -956,7 +961,196 @@ def _is_ai_auth_error(message):
     return any(marker in value for marker in markers)
 
 
+def _ensure_provider_state_loaded():
+    """Load cooldowns saved under crawler/data so separate workflows share the state."""
+    global _AI_PROVIDER_STATE_LOADED
+    if _AI_PROVIDER_STATE_LOADED:
+        return
+    _AI_PROVIDER_STATE_LOADED = True
+    try:
+        with open(_AI_PROVIDER_STATE_PATH, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return
+    cooldowns = state.get("cooldowns", {}) if isinstance(state, dict) else {}
+    if not isinstance(cooldowns, dict):
+        return
+    now = datetime.now(timezone.utc)
+    for provider, entry in cooldowns.items():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            until = datetime.fromisoformat(clean_text(entry.get("until")).replace("Z", "+00:00"))
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            remaining = (until - now).total_seconds()
+        except (TypeError, ValueError):
+            continue
+        if remaining > 0:
+            _AI_PROVIDER_COOLDOWN_UNTIL[provider] = time.monotonic() + remaining
+            _AI_PROVIDER_COOLDOWN_META[provider] = dict(entry)
+            _AI_PROVIDER_FAILURE_COUNTS[provider] = max(0, int(entry.get("attempts", 0) or 0))
+
+
+def _save_provider_state():
+    """Persist cooldowns; GitHub Actions cache restores crawler/data between runs."""
+    try:
+        os.makedirs(os.path.dirname(_AI_PROVIDER_STATE_PATH) or ".", exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "cooldowns": _AI_PROVIDER_COOLDOWN_META,
+        }
+        temporary_path = _AI_PROVIDER_STATE_PATH + ".tmp"
+        with open(temporary_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        os.replace(temporary_path, _AI_PROVIDER_STATE_PATH)
+    except OSError as exc:
+        log.warning("Không lưu được trạng thái cooldown AI (%s).", type(exc).__name__)
+
+
+def _parse_duration_seconds(value):
+    """Parse Retry-After values such as 8, 7.6s, 2m13.4s or 1h2m."""
+    raw = clean_text(value).strip().lower()
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+    if re.fullmatch(r"\d{1,2}:\d{2}:\d{2}(?:\.\d+)?", raw):
+        hours, minutes, seconds = raw.split(":")
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    units = {
+        "d": 86400, "day": 86400, "days": 86400,
+        "h": 3600, "hr": 3600, "hrs": 3600, "hour": 3600, "hours": 3600,
+        "m": 60, "min": 60, "mins": 60, "minute": 60, "minutes": 60,
+        "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1,
+    }
+    matches = re.findall(r"(\d+(?:\.\d+)?)\s*(days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)", raw)
+    if not matches:
+        return None
+    return sum(float(amount) * units[unit] for amount, unit in matches)
+
+
+def _provider_error_headers(exc):
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None) or getattr(exc, "headers", None)
+    try:
+        return {str(key).lower(): str(value) for key, value in dict(headers or {}).items()}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _retry_delay_from_error(message):
+    patterns = (
+        r"retryDelay\s*[=:]\s*[\"']([^\"']+)",
+        r"retry\s+(?:after|in)\s+(\d+(?:\.\d+)?\s*(?:seconds?|secs?|s|minutes?|mins?|m|hours?|h))",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, clean_text(message), re.I)
+        if match:
+            parsed = _parse_duration_seconds(match.group(1))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _next_daily_reset_utc():
+    now = datetime.now(timezone.utc)
+    tomorrow = now.date() + timedelta(days=1)
+    return datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=timezone.utc)
+
+
+def _next_gemini_daily_reset_utc():
+    """Gemini RPD reset at midnight Pacific; ZoneInfo follows PST/PDT automatically."""
+    pacific = ZoneInfo("America/Los_Angeles")
+    local_now = datetime.now(pacific)
+    tomorrow = local_now.date() + timedelta(days=1)
+    local_reset = datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=pacific)
+    return local_reset.astimezone(timezone.utc)
+
+
+def _record_provider_failure(provider_name, exc):
+    """Use provider reset headers/retry hints and persist an adaptive cooldown."""
+    _ensure_provider_state_loaded()
+    message = clean_text(str(exc))
+    lowered = message.casefold()
+    headers = _provider_error_headers(exc)
+    now = datetime.now(timezone.utc)
+    attempts = _AI_PROVIDER_FAILURE_COUNTS.get(provider_name, 0) + 1
+
+    retry_seconds = None
+    retry_after = headers.get("retry-after")
+    if retry_after:
+        retry_seconds = _parse_duration_seconds(retry_after)
+        if retry_seconds is None:
+            try:
+                retry_date = parsedate_to_datetime(retry_after)
+                if retry_date.tzinfo is None:
+                    retry_date = retry_date.replace(tzinfo=timezone.utc)
+                retry_seconds = max(0.0, (retry_date - now).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    if retry_seconds is None:
+        retry_seconds = _retry_delay_from_error(message)
+
+    daily_quota = _is_ai_daily_quota_error(message) or any(
+        marker in lowered for marker in ("free model requests per day", "free-models-per-day", "daily request limit")
+    )
+    if retry_seconds is None and daily_quota:
+        if provider_name == "Gemini":
+            retry_seconds = max(1.0, (_next_gemini_daily_reset_utc() - now).total_seconds())
+        elif provider_name == "Groq":
+            retry_seconds = _parse_duration_seconds(headers.get("x-ratelimit-reset-requests", ""))
+        if retry_seconds is None:
+            # OpenRouter does not expose a consistent free-model daily reset header.
+            retry_seconds = max(1.0, (_next_daily_reset_utc() - now).total_seconds())
+
+    if retry_seconds is None and provider_name == "Groq":
+        if "tokens per minute" in lowered or "token" in lowered:
+            retry_seconds = _parse_duration_seconds(headers.get("x-ratelimit-reset-tokens", ""))
+        if retry_seconds is None:
+            retry_seconds = _parse_duration_seconds(headers.get("x-ratelimit-reset-requests", ""))
+
+    if retry_seconds is None and _is_ai_capacity_error(message):
+        retry_seconds = min(900.0, AI_PROVIDER_COOLDOWN_SECONDS * (2 ** min(attempts - 1, 4)))
+    if retry_seconds is None and _is_ai_auth_error(message):
+        retry_seconds = 24 * 3600
+    if retry_seconds is None:
+        retry_seconds = min(300.0, AI_PROVIDER_COOLDOWN_SECONDS * (2 ** min(attempts - 1, 3)))
+
+    retry_seconds = max(2.0, min(float(retry_seconds), 7 * 24 * 3600))
+    until = now + timedelta(seconds=retry_seconds)
+    _AI_PROVIDER_COOLDOWN_UNTIL[provider_name] = time.monotonic() + retry_seconds
+    _AI_PROVIDER_FAILURE_COUNTS[provider_name] = attempts
+    kind = "daily_quota" if daily_quota else ("authentication" if _is_ai_auth_error(message) else "rate_limit_or_transient")
+    reason = "quota ngày; đợi mốc reset" if daily_quota else f"Retry-After/reset header hoặc backoff động ({int(retry_seconds)}s)"
+    _AI_PROVIDER_COOLDOWN_META[provider_name] = {
+        "until": until.isoformat(), "kind": kind, "reason": reason,
+        "attempts": attempts, "recorded_at": now.isoformat(),
+    }
+    if daily_quota or _is_ai_auth_error(message):
+        _AI_PROVIDERS_DISABLED_FOR_RUN[provider_name] = message[:180]
+    _save_provider_state()
+    log.warning(
+        "AI provider=%s cooldown=%s đến %s UTC (khoảng %s phút): %s",
+        provider_name, kind, until.strftime("%Y-%m-%d %H:%M:%S"),
+        max(1, int(retry_seconds / 60)), reason,
+    )
+
+
+def _clear_provider_cooldown(provider_name):
+    _ensure_provider_state_loaded()
+    _AI_PROVIDER_COOLDOWN_UNTIL.pop(provider_name, None)
+    _AI_PROVIDER_COOLDOWN_META.pop(provider_name, None)
+    _AI_PROVIDER_FAILURE_COUNTS.pop(provider_name, None)
+    _AI_PROVIDERS_DISABLED_FOR_RUN.pop(provider_name, None)
+    _save_provider_state()
+
+
 def _provider_unavailable_reason(provider_name):
+    _ensure_provider_state_loaded()
     disabled_reason = _AI_PROVIDERS_DISABLED_FOR_RUN.get(provider_name)
     if disabled_reason:
         return disabled_reason
@@ -966,9 +1160,19 @@ def _provider_unavailable_reason(provider_name):
     remaining = cooldown_until - time.monotonic()
     if remaining <= 0:
         _AI_PROVIDER_COOLDOWN_UNTIL.pop(provider_name, None)
+        _AI_PROVIDER_COOLDOWN_META.pop(provider_name, None)
+        _AI_PROVIDER_FAILURE_COUNTS.pop(provider_name, None)
+        _save_provider_state()
         return ""
-    return f"rate-limit cooldown còn khoảng {int(remaining)} giây"
-
+    meta = _AI_PROVIDER_COOLDOWN_META.get(provider_name, {})
+    until_text = ""
+    try:
+        until = datetime.fromisoformat(str(meta.get("until", "")).replace("Z", "+00:00"))
+        until_text = until.astimezone(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%H:%M %d/%m")
+    except (TypeError, ValueError):
+        pass
+    suffix = f", mở lại khoảng {until_text} giờ VN" if until_text else ""
+    return f"cooldown {meta.get('kind', 'tạm thời')} còn {max(1, int(remaining))} giây{suffix}"
 
 def _is_cover_only_publish_failure(message):
     """A missing/unlicensed cover is an article-level issue, not a broken site API."""
@@ -2045,19 +2249,7 @@ def _call_json_with_fallback(stage_name, instructions, input_data, validator):
             full_error_message = clean_text(str(exc))
             message = full_error_message[:200]
             errors.append(f"{provider_name}: {type(exc).__name__}: {message}")
-            if _is_ai_daily_quota_error(full_error_message) or _is_ai_auth_error(full_error_message):
-                _AI_PROVIDERS_DISABLED_FOR_RUN[provider_name] = message
-                log.warning(
-                    "AI provider=%s tạm ngừng đến hết lượt chạy do quota ngày/xác thực: %s",
-                    provider_name, message[:180],
-                )
-            elif _is_ai_capacity_error(full_error_message):
-                cooldown_until = time.monotonic() + AI_PROVIDER_COOLDOWN_SECONDS
-                _AI_PROVIDER_COOLDOWN_UNTIL[provider_name] = cooldown_until
-                log.warning(
-                    "AI provider=%s vào cooldown %ss do rate limit/giới hạn đầu ra.",
-                    provider_name, AI_PROVIDER_COOLDOWN_SECONDS,
-                )
+            _record_provider_failure(provider_name, exc)
             log.warning(
                 "AI stage=%s provider=%s failed elapsed=%.1fs error=%s: %s",
                 stage_name, provider_name, elapsed, type(exc).__name__, message,
@@ -2978,6 +3170,11 @@ def main(argv=None):
     # Reset transient provider state for each standalone invocation.
     _AI_PROVIDERS_DISABLED_FOR_RUN.clear()
     _AI_PROVIDER_COOLDOWN_UNTIL.clear()
+    _AI_PROVIDER_COOLDOWN_META.clear()
+    _AI_PROVIDER_FAILURE_COUNTS.clear()
+    global _AI_PROVIDER_STATE_LOADED
+    _AI_PROVIDER_STATE_LOADED = False
+    _ensure_provider_state_loaded()
     started_at = time.monotonic()
     args = parse_main_args(argv)
     run_limit = MAX_ARTICLES if args.limit is None else max(1, min(int(args.limit), 10))
