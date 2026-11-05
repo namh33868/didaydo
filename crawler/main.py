@@ -722,6 +722,7 @@ def _parse_html_listing_items(html, source):
             "source_focus": source.get("focus", []),
             "allowed_domains": source.get("article_domains", []),
             "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+            "allow_source_images": source.get("allow_source_images", True),
         }
         results.append(item)
         if len(results) >= MAX_FEED_ITEMS_PER_SOURCE:
