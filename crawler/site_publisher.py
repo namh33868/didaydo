@@ -522,8 +522,8 @@ def _strip_disallowed_source_images_from_draft(
             else:
                 image_tag.decompose()
 
-    for text_node in list(soup.find_all(string=re.compile(r"\\[\\[IMAGE:IMG_\\d{2}\\]\\]", re.I))):
-        cleaned = re.sub(r"\\[\\[IMAGE:IMG_\\d{2}\\]\\]", "", str(text_node), flags=re.I)
+    for text_node in list(soup.find_all(string=re.compile(r"\[\[IMAGE:IMG_\d{2}\]\]", re.I))):
+        cleaned = re.sub(r"\[\[IMAGE:IMG_\d{2}\]\]", "", str(text_node), flags=re.I)
         if cleaned:
             text_node.replace_with(cleaned)
         else:
