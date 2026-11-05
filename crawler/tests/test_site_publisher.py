@@ -211,6 +211,57 @@ class SitePublisherSyncStateTests(unittest.TestCase):
         search.assert_called_once()
         self.assertIsNone(result)
 
+    def test_vinpearl_source_photos_are_blocked_and_replaced_with_licensed_cover(self):
+        original_url = "https://www.vinpearl.com/sites/default/files/ha-long-bay.jpg"
+        external = {
+            "url": "https://images.example.net/ha-long-bay-licensed.jpg",
+            "title": "Ha Long Bay landscape",
+            "creator": "Photo creator",
+            "provider": "Openverse",
+            "source_page_url": "https://openverse.example.net/photo/456",
+            "license": "CC BY 4.0",
+            "license_url": "https://creativecommons.org/licenses/by/4.0/",
+            "image_scope": "exact_destination",
+            "relevance_verified": True,
+        }
+        article = {
+            "source_url": "https://www.vinpearl.com/vi/kinh-nghiem-du-lich-ha-long",
+            "source_title": "Kinh nghiệm du lịch Hạ Long",
+            "source_name": "Vinpearl – Cẩm nang du lịch",
+            # Simulate a queued/old row with stale metadata that incorrectly says True.
+            "allow_source_images": True,
+            "source_images": [{
+                "image_id": "IMG_01",
+                "url": original_url,
+                "original_url": original_url,
+                "alt": "Vịnh Hạ Long",
+                "caption": "Toàn cảnh vịnh Hạ Long",
+                "position_index": 1,
+                "placement_source": "article_body",
+            }],
+            "destination_country": "Việt Nam",
+            "destination_city": "Hạ Long",
+            "primary_category": "travel-guide",
+        }
+        draft = {
+            "seo_title": "Kinh nghiệm du lịch Hạ Long",
+            "meta_description": "Gợi ý khám phá Hạ Long.",
+            "seo_content": (
+                "<p>Hạ Long có nhiều lựa chọn tham quan.</p>"
+                f'<figure><img src="{original_url}" alt="Vịnh Hạ Long" /></figure>'
+            ),
+        }
+
+        with patch("image_finder.find_cover_image", return_value=external) as external_search:
+            cover = site_publisher._ensure_source_article_images(article, ":memory:", draft=draft)
+
+        self.assertFalse(article["allow_source_images"])
+        self.assertEqual(cover["url"], external["url"])
+        self.assertEqual(external_search.call_args.args[0]["source_images"], [])
+        self.assertIn("vinpearl.com", external_search.call_args.kwargs["exclude_domains"])
+        self.assertNotIn(original_url, draft["seo_content"])
+        self.assertIn("Hạ Long có nhiều lựa chọn tham quan", draft["seo_content"])
+
     def test_historical_backfill_uses_source_image_before_external_search(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = str(Path(temp_dir) / "crawler.sqlite")
