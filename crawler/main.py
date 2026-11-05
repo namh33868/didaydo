@@ -10,7 +10,9 @@ import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from html import escape as html_escape
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from threading import RLock
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlparse
 
@@ -111,22 +113,27 @@ except ValueError:
 
 try:
     AI_PROVIDER_COOLDOWN_SECONDS = max(
-        30, min(int(os.getenv("AI_PROVIDER_COOLDOWN_SECONDS", "120")), 900)
+        5, min(int(os.getenv("AI_PROVIDER_COOLDOWN_SECONDS", "45")), 900)
     )
 except ValueError:
-    AI_PROVIDER_COOLDOWN_SECONDS = 120
+    AI_PROVIDER_COOLDOWN_SECONDS = 45
 
 # Provider state is scoped to one crawler process. Daily quota/auth failures stay
 # disabled for this run; transient rate limits and truncated output get a cooldown.
 _AI_PROVIDERS_DISABLED_FOR_RUN = {}
 _AI_PROVIDER_COOLDOWN_UNTIL = {}
+_AI_PROVIDER_COOLDOWN_META = {}
+_AI_PROVIDER_FAILURE_COUNTS = {}
+_AI_PROVIDER_STATE_PATH = os.path.join(os.path.dirname(DATABASE_PATH), "ai_provider_state.json")
+_AI_PROVIDER_STATE_LOADED = False
+_AI_PROVIDER_STATE_LOCK = RLock()
 
 try:
     AI_MAX_CONSECUTIVE_FAILURES = max(
-        1, min(int(os.getenv("AI_MAX_CONSECUTIVE_FAILURES", "2")), 5)
+        1, min(int(os.getenv("AI_MAX_CONSECUTIVE_FAILURES", "3")), 5)
     )
 except ValueError:
-    AI_MAX_CONSECUTIVE_FAILURES = 2
+    AI_MAX_CONSECUTIVE_FAILURES = 3
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
@@ -640,6 +647,7 @@ def _parse_feed_items(xml, source):
             "source_focus": source.get("focus", []),
             "allowed_domains": source.get("article_domains", []),
             "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+            "allow_source_images": source.get("allow_source_images", True),
         }
         results.append(item)
     return results
@@ -648,18 +656,95 @@ def _parse_feed_items(xml, source):
 LAST_DISCOVERY_REPORT = {}
 
 
+def _parse_html_listing_items(html, source):
+    """Parse article cards from an official HTML listing when a source has no public RSS."""
+    listing_url = source.get("feed_url") or source.get("listing_url") or source.get("homepage", "")
+    language = str(source.get("language", "vi")).lower().split("-")[0]
+    soup = BeautifulSoup(html, "html.parser")
+    results, seen = [], set()
+    excluded_slugs = {
+        "news", "travel-guide", "tin-tuc", "cam-nang-du-lich", "hotel", "hotels",
+        "offers", "contact", "about-us", "search", "booking", "terms",
+    }
+    for anchor in soup.find_all("a", href=True):
+        title = clean_text(anchor.get_text(" ", strip=True))
+        if len(title) < 12:
+            continue
+        link_url = normalize_url(urljoin(listing_url, anchor.get("href", "")))
+        if not link_url or link_url in seen or not _url_allowed_for_source(link_url, source):
+            continue
+        path_parts = [part for part in urlparse(link_url).path.split("/") if part]
+        # Vinpearl's article detail pages use /vi/<slug>; category and product pages
+        # have additional path segments and are deliberately excluded.
+        if len(path_parts) != 2 or path_parts[0].lower() != language:
+            continue
+        slug = path_parts[1].lower()
+        if slug in excluded_slugs or len(slug) < 12:
+            continue
+
+        card = anchor
+        card_text = ""
+        published = ""
+        image_url = ""
+        # The listing's newest-article cards expose a publication date next to
+        # title/summary; requiring it avoids treating navigation links as articles.
+        for _ in range(5):
+            card_text = clean_text(card.get_text(" ", strip=True))
+            date_match = re.search(r"\b(\d{1,2}/\d{1,2}/20\d{2})\b", card_text)
+            if date_match and len(card_text) >= len(title) + 8:
+                published = date_match.group(1)
+                image = card.find("img")
+                if image:
+                    image_url = image.get("src") or image.get("data-src") or image.get("data-lazy-src") or ""
+                break
+            if getattr(card, "parent", None) is None:
+                break
+            card = card.parent
+        if not published:
+            continue
+        seen.add(link_url)
+        summary = card_text.replace(title, " ", 1)
+        summary = re.sub(r"\b\d{1,2}/\d{1,2}/20\d{2}\b", " ", summary)
+        summary = clean_text(summary)[:1200]
+        item = {
+            "source_url": link_url,
+            "rss_title": title[:500],
+            "rss_summary": summary,
+            "rss_published_at": published[:120],
+            "rss_categories": [],
+            "rss_image_url": urljoin(listing_url, image_url) if image_url else None,
+            "source_id": source.get("id", ""),
+            "source_name": source.get("name", ""),
+            "source_homepage": source.get("homepage", ""),
+            "source_feed_url": listing_url,
+            "source_domain": _source_domain(source, link_url),
+            "source_language": language,
+            "source_focus": source.get("focus", []),
+            "allowed_domains": source.get("article_domains", []),
+            "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+            "allow_source_images": source.get("allow_source_images", True),
+        }
+        results.append(item)
+        if len(results) >= MAX_FEED_ITEMS_PER_SOURCE:
+            break
+    return results
+
+
 def _fetch_one_source_feed(source):
     name = source.get("name", source.get("id", "unknown"))
     try:
-        xml = fetch(source["feed_url"], timeout=12, attempts=1)
-        items = _parse_feed_items(xml, source)
+        content = fetch(source["feed_url"], timeout=12, attempts=1)
+        if str(source.get("source_type", "rss")).lower() == "html_listing":
+            items = _parse_html_listing_items(content, source)
+        else:
+            items = _parse_feed_items(content, source)
         return source, items, None
     except Exception as exc:
         return source, [], f"{type(exc).__name__}: {clean_text(str(exc))[:180]}"
 
 
 def discover_from_sources():
-    """Read configured English-language RSS/Atom feeds concurrently and interleave candidates."""
+    """Read configured RSS/Atom feeds and HTML listings concurrently, then interleave candidates."""
     global LAST_DISCOVERY_REPORT
     discovery_report = {
         "enabled_sources": 0,
@@ -757,6 +842,7 @@ def discover_from_sources():
                 "source_focus": source.get("focus", []),
                 "allowed_domains": source.get("article_domains") or source.get("allowed_domains", []),
                 "permission_status": source.get("permission_status", "review_terms_before_commercial_reuse"),
+                "allow_source_images": source.get("allow_source_images", True),
             })
     except sqlite3.Error as exc:
         log.warning("Không nạp được hàng đợi AI lỗi từ SQLite (%s); vẫn crawl RSS mới.", type(exc).__name__)
@@ -956,7 +1042,197 @@ def _is_ai_auth_error(message):
     return any(marker in value for marker in markers)
 
 
+def _ensure_provider_state_loaded():
+    """Load cooldowns saved under crawler/data so separate workflows share the state."""
+    global _AI_PROVIDER_STATE_LOADED
+    if _AI_PROVIDER_STATE_LOADED:
+        return
+    _AI_PROVIDER_STATE_LOADED = True
+    try:
+        with open(_AI_PROVIDER_STATE_PATH, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return
+    cooldowns = state.get("cooldowns", {}) if isinstance(state, dict) else {}
+    if not isinstance(cooldowns, dict):
+        return
+    now = datetime.now(timezone.utc)
+    for provider, entry in cooldowns.items():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            until = datetime.fromisoformat(clean_text(entry.get("until")).replace("Z", "+00:00"))
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            remaining = (until - now).total_seconds()
+        except (TypeError, ValueError):
+            continue
+        if remaining > 0:
+            _AI_PROVIDER_COOLDOWN_UNTIL[provider] = time.monotonic() + remaining
+            _AI_PROVIDER_COOLDOWN_META[provider] = dict(entry)
+            _AI_PROVIDER_FAILURE_COUNTS[provider] = max(0, int(entry.get("attempts", 0) or 0))
+
+
+def _save_provider_state():
+    """Persist cooldowns safely while parallel reviewers update provider state."""
+    try:
+        with _AI_PROVIDER_STATE_LOCK:
+            os.makedirs(os.path.dirname(_AI_PROVIDER_STATE_PATH) or ".", exist_ok=True)
+            payload = {
+                "schema_version": 1,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "cooldowns": dict(_AI_PROVIDER_COOLDOWN_META),
+            }
+            temporary_path = _AI_PROVIDER_STATE_PATH + ".tmp"
+            with open(temporary_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            os.replace(temporary_path, _AI_PROVIDER_STATE_PATH)
+    except OSError as exc:
+        log.warning("Không lưu được trạng thái cooldown AI (%s).", type(exc).__name__)
+
+
+def _parse_duration_seconds(value):
+    """Parse Retry-After values such as 8, 7.6s, 2m13.4s or 1h2m."""
+    raw = clean_text(value).strip().lower()
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+    if re.fullmatch(r"\d{1,2}:\d{2}:\d{2}(?:\.\d+)?", raw):
+        hours, minutes, seconds = raw.split(":")
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    units = {
+        "d": 86400, "day": 86400, "days": 86400,
+        "h": 3600, "hr": 3600, "hrs": 3600, "hour": 3600, "hours": 3600,
+        "m": 60, "min": 60, "mins": 60, "minute": 60, "minutes": 60,
+        "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1,
+    }
+    matches = re.findall(r"(\d+(?:\.\d+)?)\s*(days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)", raw)
+    if not matches:
+        return None
+    return sum(float(amount) * units[unit] for amount, unit in matches)
+
+
+def _provider_error_headers(exc):
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None) or getattr(exc, "headers", None)
+    try:
+        return {str(key).lower(): str(value) for key, value in dict(headers or {}).items()}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _retry_delay_from_error(message):
+    patterns = (
+        r"retryDelay\s*[=:]\s*[\"']([^\"']+)",
+        r"retry\s+(?:after|in)\s+(\d+(?:\.\d+)?\s*(?:seconds?|secs?|s|minutes?|mins?|m|hours?|h))",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, clean_text(message), re.I)
+        if match:
+            parsed = _parse_duration_seconds(match.group(1))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _next_daily_reset_utc():
+    now = datetime.now(timezone.utc)
+    tomorrow = now.date() + timedelta(days=1)
+    return datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=timezone.utc)
+
+
+def _next_gemini_daily_reset_utc():
+    """Gemini RPD reset at midnight Pacific; ZoneInfo follows PST/PDT automatically."""
+    pacific = ZoneInfo("America/Los_Angeles")
+    local_now = datetime.now(pacific)
+    tomorrow = local_now.date() + timedelta(days=1)
+    local_reset = datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=pacific)
+    return local_reset.astimezone(timezone.utc)
+
+
+def _record_provider_failure(provider_name, exc):
+    """Use provider reset headers/retry hints and persist an adaptive cooldown."""
+    _ensure_provider_state_loaded()
+    message = clean_text(str(exc))
+    lowered = message.casefold()
+    headers = _provider_error_headers(exc)
+    now = datetime.now(timezone.utc)
+    attempts = _AI_PROVIDER_FAILURE_COUNTS.get(provider_name, 0) + 1
+
+    retry_seconds = None
+    retry_after = headers.get("retry-after")
+    if retry_after:
+        retry_seconds = _parse_duration_seconds(retry_after)
+        if retry_seconds is None:
+            try:
+                retry_date = parsedate_to_datetime(retry_after)
+                if retry_date.tzinfo is None:
+                    retry_date = retry_date.replace(tzinfo=timezone.utc)
+                retry_seconds = max(0.0, (retry_date - now).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    if retry_seconds is None:
+        retry_seconds = _retry_delay_from_error(message)
+
+    daily_quota = _is_ai_daily_quota_error(message) or any(
+        marker in lowered for marker in ("free model requests per day", "free-models-per-day", "daily request limit")
+    )
+    if retry_seconds is None and daily_quota:
+        if provider_name == "Gemini":
+            retry_seconds = max(1.0, (_next_gemini_daily_reset_utc() - now).total_seconds())
+        elif provider_name == "Groq":
+            retry_seconds = _parse_duration_seconds(headers.get("x-ratelimit-reset-requests", ""))
+        if retry_seconds is None:
+            # OpenRouter does not expose a consistent free-model daily reset header.
+            retry_seconds = max(1.0, (_next_daily_reset_utc() - now).total_seconds())
+
+    if retry_seconds is None and provider_name == "Groq":
+        if "tokens per minute" in lowered or "token" in lowered:
+            retry_seconds = _parse_duration_seconds(headers.get("x-ratelimit-reset-tokens", ""))
+        if retry_seconds is None:
+            retry_seconds = _parse_duration_seconds(headers.get("x-ratelimit-reset-requests", ""))
+
+    if retry_seconds is None and _is_ai_capacity_error(message):
+        retry_seconds = min(900.0, AI_PROVIDER_COOLDOWN_SECONDS * (2 ** min(attempts - 1, 4)))
+    if retry_seconds is None and _is_ai_auth_error(message):
+        retry_seconds = 24 * 3600
+    if retry_seconds is None:
+        retry_seconds = min(300.0, AI_PROVIDER_COOLDOWN_SECONDS * (2 ** min(attempts - 1, 3)))
+
+    retry_seconds = max(2.0, min(float(retry_seconds), 7 * 24 * 3600))
+    until = now + timedelta(seconds=retry_seconds)
+    _AI_PROVIDER_COOLDOWN_UNTIL[provider_name] = time.monotonic() + retry_seconds
+    _AI_PROVIDER_FAILURE_COUNTS[provider_name] = attempts
+    kind = "daily_quota" if daily_quota else ("authentication" if _is_ai_auth_error(message) else "rate_limit_or_transient")
+    reason = "quota ngày; đợi mốc reset" if daily_quota else f"Retry-After/reset header hoặc backoff động ({int(retry_seconds)}s)"
+    _AI_PROVIDER_COOLDOWN_META[provider_name] = {
+        "until": until.isoformat(), "kind": kind, "reason": reason,
+        "attempts": attempts, "recorded_at": now.isoformat(),
+    }
+    if daily_quota or _is_ai_auth_error(message):
+        _AI_PROVIDERS_DISABLED_FOR_RUN[provider_name] = message[:180]
+    _save_provider_state()
+    log.warning(
+        "AI provider=%s cooldown=%s đến %s UTC (khoảng %s phút): %s",
+        provider_name, kind, until.strftime("%Y-%m-%d %H:%M:%S"),
+        max(1, int(retry_seconds / 60)), reason,
+    )
+
+
+def _clear_provider_cooldown(provider_name):
+    _ensure_provider_state_loaded()
+    _AI_PROVIDER_COOLDOWN_UNTIL.pop(provider_name, None)
+    _AI_PROVIDER_COOLDOWN_META.pop(provider_name, None)
+    _AI_PROVIDER_FAILURE_COUNTS.pop(provider_name, None)
+    _AI_PROVIDERS_DISABLED_FOR_RUN.pop(provider_name, None)
+    _save_provider_state()
+
+
 def _provider_unavailable_reason(provider_name):
+    _ensure_provider_state_loaded()
     disabled_reason = _AI_PROVIDERS_DISABLED_FOR_RUN.get(provider_name)
     if disabled_reason:
         return disabled_reason
@@ -966,9 +1242,19 @@ def _provider_unavailable_reason(provider_name):
     remaining = cooldown_until - time.monotonic()
     if remaining <= 0:
         _AI_PROVIDER_COOLDOWN_UNTIL.pop(provider_name, None)
+        _AI_PROVIDER_COOLDOWN_META.pop(provider_name, None)
+        _AI_PROVIDER_FAILURE_COUNTS.pop(provider_name, None)
+        _save_provider_state()
         return ""
-    return f"rate-limit cooldown còn khoảng {int(remaining)} giây"
-
+    meta = _AI_PROVIDER_COOLDOWN_META.get(provider_name, {})
+    until_text = ""
+    try:
+        until = datetime.fromisoformat(str(meta.get("until", "")).replace("Z", "+00:00"))
+        until_text = until.astimezone(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%H:%M %d/%m")
+    except (TypeError, ValueError):
+        pass
+    suffix = f", mở lại khoảng {until_text} giờ VN" if until_text else ""
+    return f"cooldown {meta.get('kind', 'tạm thời')} còn {max(1, int(remaining))} giây{suffix}"
 
 def _is_cover_only_publish_failure(message):
     """A missing/unlicensed cover is an article-level issue, not a broken site API."""
@@ -1533,6 +1819,7 @@ def extract_article_metadata(item):
         "source_feed_url": item.get("source_feed_url", ""),
         "source_focus": item.get("source_focus", []),
         "permission_status": item.get("permission_status", "review_terms_before_commercial_reuse"),
+        "allow_source_images": item.get("allow_source_images", True),
         "rss_categories": item.get("rss_categories", []),
     }
     result.update(classify_article(result, item))
@@ -1622,9 +1909,10 @@ GIỌNG VĂN
 - Tránh câu sáo rỗng, khuyến nghị chung chung, lặp ý hoặc kéo dài bài bằng suy đoán.
 
 SEO
-- Tiêu đề SEO chính xác và có ích, không giật tít quá mức.
-- Meta description đúng nội dung.
-- Chọn một từ khóa chính và 3–6 từ khóa phụ liên quan thực sự.
+- Tiêu đề SEO chính xác, tự nhiên, ưu tiên khoảng 40–65 ký tự; không giật tít quá mức.
+- Meta description khoảng 120–160 ký tự, nêu rõ lợi ích/thông tin chính và đúng nội dung.
+- Chọn một từ khóa chính và 3–6 từ khóa phụ có ý định tìm kiếm rõ ràng; đưa từ khóa chính tự nhiên vào tiêu đề, sapo và ít nhất một heading nếu phù hợp, tuyệt đối không nhồi từ khóa.
+- Bài phải giải quyết đúng nhu cầu tìm kiếm: đưa thông tin quan trọng lên sớm, có heading mô tả đúng câu hỏi người đọc, nội dung thực dụng và kết luận rõ ràng.
 - Nội dung website dùng taxonomy theo quốc gia và chủ đề. Hãy ưu tiên destination_country_hint / destination_city_hint / primary_site_category_hint đã cung cấp; nếu đang là "World / Chưa phân loại" thì không tự gán quốc gia khi không có căn cứ.
 - Nếu source_content_mode=source_body_reference: sử dụng source_reference_material như tài liệu tham khảo để xác định dữ kiện và chủ đề; không sao chép câu, không giữ nguyên thứ tự đoạn/heading và không làm bản dịch sát nghĩa. Tự thiết kế cấu trúc theo nhu cầu độc giả Việt Nam.
 - Nếu source_content_mode=metadata_only hoặc metadata_fallback: chỉ dùng title, description, ngày/chuyên mục, từ khóa metadata và ảnh; dữ kiện hạn chế thì chỉ viết bản nháp ngắn và đánh dấu cần bổ sung thông tin.
@@ -1872,7 +2160,7 @@ def _call_openai(instructions, input_data):
     return response.choices[0].message.content or ""
 
 
-def _call_groq(instructions, input_data):
+def _call_groq(instructions, input_data, max_completion_tokens=None):
     """Call Groq via its OpenAI-compatible endpoint, using a distinct GROQ_API_KEY."""
     from openai import OpenAI
 
@@ -1890,7 +2178,7 @@ def _call_groq(instructions, input_data):
         ],
         response_format={"type": "json_object"},
         temperature=0.3,
-        max_completion_tokens=GROQ_MAX_OUTPUT_TOKENS,
+        max_completion_tokens=max_completion_tokens or GROQ_MAX_OUTPUT_TOKENS,
     )
     if not response.choices:
         raise ValueError("Groq trả về 0 choices")
@@ -1901,7 +2189,7 @@ def _call_groq(instructions, input_data):
     return content
 
 
-def _call_openrouter(instructions, input_data):
+def _call_openrouter(instructions, input_data, max_tokens=None):
     from openai import OpenAI
 
     client = OpenAI(
@@ -1921,7 +2209,7 @@ def _call_openrouter(instructions, input_data):
             {"role": "user", "content": json.dumps(input_data, ensure_ascii=False)},
         ],
         temperature=0.4,
-        max_tokens=AI_MAX_OUTPUT_TOKENS,
+        max_tokens=max_tokens or AI_MAX_OUTPUT_TOKENS,
     )
     if not response.choices:
         raise ValueError("OpenRouter trả về 0 choices")
@@ -1961,6 +2249,211 @@ def _groq_request_input(input_data, max_chars=None):
         payload["source_reference_chars"] = len(payload["source_reference_material"])
         payload["source_reference_truncated"] = True
     return payload
+
+
+
+SEO_REVIEW_INSTRUCTIONS = """
+Bạn là biên tập viên SEO tiếng Việt cho một trang tin du lịch.
+Đánh giá bản nháp theo ý định tìm kiếm, độ rõ tiêu đề, meta description, mức khớp từ khóa, cấu trúc heading và giá trị thực dụng.
+Không nhồi từ khóa, không bịa dữ kiện, không tối ưu máy móc. Không coi điểm số là thứ hạng Google.
+Nếu metadata đang tốt thì có thể giữ nguyên. Chỉ chọn từ khóa thực sự phù hợp với nội dung.
+Trả về DUY NHẤT JSON:
+{
+  "score": 0,
+  "seo_title": "Tiêu đề SEO tiếng Việt",
+  "meta_description": "Mô tả SEO tiếng Việt",
+  "primary_keyword": "từ khóa chính",
+  "secondary_keywords": ["từ khóa phụ 1", "từ khóa phụ 2", "từ khóa phụ 3"],
+  "critical_issues": ["vấn đề thật sự cần sửa"],
+  "improvements": ["gợi ý ngắn, cụ thể"]
+}
+""".strip()
+
+
+FACT_REVIEW_INSTRUCTIONS = """
+Bạn là biên tập viên kiểm tra độ trung thực của bài du lịch.
+Chỉ đối chiếu bản nháp với tài liệu nguồn được cung cấp; KHÔNG tuyên bố đã xác minh độc lập trên Internet.
+Nêu thông tin trong bản nháp không được nguồn hỗ trợ, mâu thuẫn với nguồn, hoặc có thể thay đổi theo thời gian như giá, giờ mở cửa, lịch trình, quy định, vé.
+Không tự thêm dữ kiện. Nếu không thấy vấn đề có căn cứ thì để danh sách rỗng.
+Trả về DUY NHẤT JSON:
+{
+  "risk_level": "low|medium|high",
+  "unsupported_claims": ["..."],
+  "contradictions": ["..."],
+  "time_sensitive_claims": ["..."],
+  "notes": "Ghi chú biên tập ngắn bằng tiếng Việt"
+}
+""".strip()
+
+
+def _review_payload(article, draft, max_source_chars, max_draft_chars):
+    body = BeautifulSoup(draft.get("seo_content", "") or "", "html.parser")
+    draft_text = clean_text(body.get_text(" ", strip=True))
+    headings = [
+        clean_text(node.get_text(" ", strip=True))[:160]
+        for node in body.find_all(["h2", "h3"])[:16]
+    ]
+    source_text = article.get("source_body") or ""
+    return {
+        "source_title": clean_text(article.get("source_title", ""))[:500],
+        "source_summary": clean_text(article.get("source_summary", ""))[:1200],
+        "source_url": clean_text(article.get("source_url", ""))[:1000],
+        "source_reference_excerpt": _prepare_source_reference_text(source_text, max_source_chars) if source_text else "",
+        "draft_title": clean_text(draft.get("seo_title", ""))[:200],
+        "draft_meta_description": clean_text(draft.get("seo_description", ""))[:500],
+        "draft_primary_keyword": clean_text(draft.get("primary_keyword", ""))[:150],
+        "draft_secondary_keywords": draft.get("secondary_keywords", "[]"),
+        "draft_headings": headings,
+        "draft_text_excerpt": _prepare_source_reference_text(draft_text, max_draft_chars),
+    }
+
+
+def _run_one_editorial_review(role, provider, instructions, payload):
+    if provider == "Groq":
+        raw = _call_groq(instructions, payload, max_completion_tokens=700)
+    elif provider == "OpenRouter":
+        raw = _call_openrouter(instructions, payload, max_tokens=700)
+    else:
+        raise ValueError(f"Provider không hỗ trợ vai trò biên tập: {provider}")
+    data = _load_json_object(raw, provider, f"{role}-review")
+    if role == "seo":
+        try:
+            score = max(0, min(100, int(data.get("score", 0))))
+        except (TypeError, ValueError):
+            score = 0
+        keywords = data.get("secondary_keywords", [])
+        if not isinstance(keywords, list):
+            keywords = []
+        return {
+            "score": score,
+            "seo_title": clean_text(data.get("seo_title", ""))[:200],
+            "meta_description": clean_text(data.get("meta_description", ""))[:500],
+            "primary_keyword": clean_text(data.get("primary_keyword", ""))[:150],
+            "secondary_keywords": [clean_text(x)[:100] for x in keywords[:6] if isinstance(x, str) and clean_text(x)],
+            "critical_issues": [clean_text(x)[:180] for x in (data.get("critical_issues") or [])[:6] if isinstance(x, str) and clean_text(x)],
+            "improvements": [clean_text(x)[:180] for x in (data.get("improvements") or [])[:6] if isinstance(x, str) and clean_text(x)],
+        }
+    unsupported = data.get("unsupported_claims", [])
+    contradictions = data.get("contradictions", [])
+    time_sensitive = data.get("time_sensitive_claims", [])
+    return {
+        "risk_level": clean_text(data.get("risk_level", "medium")).lower()[:20],
+        "unsupported_claims": [clean_text(x)[:220] for x in unsupported[:8] if isinstance(x, str) and clean_text(x)] if isinstance(unsupported, list) else [],
+        "contradictions": [clean_text(x)[:220] for x in contradictions[:8] if isinstance(x, str) and clean_text(x)] if isinstance(contradictions, list) else [],
+        "time_sensitive_claims": [clean_text(x)[:220] for x in time_sensitive[:8] if isinstance(x, str) and clean_text(x)] if isinstance(time_sensitive, list) else [],
+        "notes": clean_text(data.get("notes", ""))[:700],
+    }
+
+
+def _run_parallel_editorial_reviews(article, draft, writer_provider):
+    """Groq audits SEO while OpenRouter checks source fidelity; the two independent jobs run concurrently."""
+    jobs = {}
+    if GROQ_API_KEY and writer_provider != "Groq" and not _provider_unavailable_reason("Groq"):
+        jobs["seo"] = ("Groq", SEO_REVIEW_INSTRUCTIONS, _review_payload(article, draft, 2200, 5000))
+    if OPENROUTER_API_KEY and writer_provider != "OpenRouter" and not _provider_unavailable_reason("OpenRouter"):
+        jobs["fact"] = ("OpenRouter", FACT_REVIEW_INSTRUCTIONS, _review_payload(article, draft, 3400, 4000))
+    if not jobs:
+        log.info("Bỏ qua editorial review: không còn reviewer khả dụng sau bước viết bài.")
+        return {}
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        futures = {
+            pool.submit(_run_one_editorial_review, role, provider, prompt, payload): role
+            for role, (provider, prompt, payload) in jobs.items()
+        }
+        for future, role in futures.items():
+            provider = jobs[role][0]
+            try:
+                results[role] = future.result()
+                results[role]["provider"] = provider
+                _clear_provider_cooldown(provider)
+                log.info("AI editorial role=%s provider=%s completed", role, provider)
+            except Exception as exc:
+                _record_provider_failure(provider, exc)
+                log.warning(
+                    "AI editorial role=%s provider=%s failed; retaining writer draft (%s): %s",
+                    role, provider, type(exc).__name__, clean_text(str(exc))[:180],
+                )
+                results[role] = {"status": "failed", "provider": provider, "reason": clean_text(str(exc))[:180]}
+    return results
+
+
+def _apply_editorial_reviews(draft, reviews):
+    """Apply safe metadata suggestions and retain source-review warnings for editors."""
+    seo = reviews.get("seo") if isinstance(reviews, dict) else None
+    if isinstance(seo, dict) and seo.get("score", 0) >= 65:
+        plain = clean_text(BeautifulSoup(draft.get("seo_content", ""), "html.parser").get_text(" ", strip=True))
+        keyword = clean_text(seo.get("primary_keyword", ""))
+        title = clean_text(seo.get("seo_title", ""))
+        description = clean_text(seo.get("meta_description", ""))
+        if keyword and keyword.casefold() in plain.casefold() and title and 30 <= len(title) <= 70:
+            draft["seo_title"] = title
+            draft["primary_keyword"] = keyword
+            if description and 100 <= len(description) <= 180:
+                draft["seo_description"] = description
+            secondary = seo.get("secondary_keywords") or []
+            if 3 <= len(secondary) <= 6:
+                draft["secondary_keywords"] = json.dumps(secondary, ensure_ascii=False)
+        draft["seo_editor_score"] = seo.get("score", 0)
+        notes = seo.get("critical_issues", []) + seo.get("improvements", [])
+        if notes:
+            existing = clean_text(draft.get("fact_check_notes", ""))
+            note = "Rà soát SEO (điểm biên tập, không phải thứ hạng Google): " + "; ".join(notes[:5])
+            draft["fact_check_notes"] = (existing + " " + note).strip()[:1800]
+
+    fact = reviews.get("fact") if isinstance(reviews, dict) else None
+    if isinstance(fact, dict) and fact.get("status") != "failed":
+        issues = fact.get("unsupported_claims", []) + fact.get("contradictions", [])
+        time_sensitive = fact.get("time_sensitive_claims", [])
+        if issues or time_sensitive or fact.get("notes"):
+            existing = clean_text(draft.get("fact_check_notes", ""))
+            parts = []
+            if issues:
+                parts.append("Điểm cần đối chiếu nguồn: " + "; ".join(issues[:4]))
+            if time_sensitive:
+                parts.append("Thông tin dễ thay đổi cần kiểm tra trước xuất bản: " + "; ".join(time_sensitive[:4]))
+            if fact.get("notes"):
+                parts.append(fact["notes"])
+            note = f"Rà soát nguồn OpenRouter (rủi ro {fact.get('risk_level', 'medium')}; không xác minh ngoài nguồn): " + " ".join(parts)
+            draft["fact_check_notes"] = (existing + " " + note).strip()[:1800]
+        draft["source_fidelity_risk"] = fact.get("risk_level", "medium")
+    return draft
+
+
+def _evaluate_seo_quality(draft):
+    """Editorial SEO checklist; the score is not a Google ranking prediction."""
+    soup = BeautifulSoup(draft.get("seo_content", "") or "", "html.parser")
+    plain = clean_text(soup.get_text(" ", strip=True))
+    words = re.findall(r"[^\W_]+", plain, flags=re.UNICODE)
+    headings = soup.find_all(["h2", "h3"])
+    paragraphs = soup.find_all("p")
+    title = clean_text(draft.get("seo_title", ""))
+    description = clean_text(draft.get("seo_description", ""))
+    primary = clean_text(draft.get("primary_keyword", ""))
+    try:
+        secondary = json.loads(draft.get("secondary_keywords") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        secondary = []
+    checks = {
+        "word_count": len(words),
+        "heading_count": len(headings),
+        "paragraph_count": len(paragraphs),
+        "title_length": len(title),
+        "meta_description_length": len(description),
+        "primary_keyword_present": bool(primary and primary.casefold() in (title + " " + plain).casefold()),
+        "primary_keyword_early": bool(primary and primary.casefold() in " ".join(words[:120]).casefold()),
+        "secondary_keyword_count": len(secondary) if isinstance(secondary, list) else 0,
+    }
+    score = 100
+    if len(words) < 350: score -= 20
+    if len(headings) < 2: score -= 15
+    if len(paragraphs) < 4: score -= 10
+    if not 30 <= len(title) <= 70: score -= 10
+    if not 100 <= len(description) <= 180: score -= 10
+    if not checks["primary_keyword_present"]: score -= 15
+    if not checks["primary_keyword_early"]: score -= 10
+    if checks["secondary_keyword_count"] < 3: score -= 10
+    return max(0, score), checks
 
 
 def _configured_ai_providers(instructions, input_data):
@@ -2045,19 +2538,7 @@ def _call_json_with_fallback(stage_name, instructions, input_data, validator):
             full_error_message = clean_text(str(exc))
             message = full_error_message[:200]
             errors.append(f"{provider_name}: {type(exc).__name__}: {message}")
-            if _is_ai_daily_quota_error(full_error_message) or _is_ai_auth_error(full_error_message):
-                _AI_PROVIDERS_DISABLED_FOR_RUN[provider_name] = message
-                log.warning(
-                    "AI provider=%s tạm ngừng đến hết lượt chạy do quota ngày/xác thực: %s",
-                    provider_name, message[:180],
-                )
-            elif _is_ai_capacity_error(full_error_message):
-                cooldown_until = time.monotonic() + AI_PROVIDER_COOLDOWN_SECONDS
-                _AI_PROVIDER_COOLDOWN_UNTIL[provider_name] = cooldown_until
-                log.warning(
-                    "AI provider=%s vào cooldown %ss do rate limit/giới hạn đầu ra.",
-                    provider_name, AI_PROVIDER_COOLDOWN_SECONDS,
-                )
+            _record_provider_failure(provider_name, exc)
             log.warning(
                 "AI stage=%s provider=%s failed elapsed=%.1fs error=%s: %s",
                 stage_name, provider_name, elapsed, type(exc).__name__, message,
@@ -2128,6 +2609,11 @@ def _insert_inline_images(article, draft):
     SOURCE_IMAGE_REUSE_AUTHORIZED=true is explicitly set by the operator.
     """
     images = _image_list_from_article(article)
+    if article.get("allow_source_images") is False:
+        content = draft.get("seo_content", "") or ""
+        content = re.sub(r"<p>\s*\[\[IMAGE:IMG_\d{2}\]\]\s*</p>", "", content, flags=re.I)
+        draft["seo_content"] = re.sub(r"\[\[IMAGE:IMG_\d{2}\]\]", "", content)
+        return draft
     try:
         max_inline_images = max(1, min(int(os.getenv("SOURCE_ARTICLE_MAX_IMAGES", "4")), 6))
     except ValueError:
@@ -2351,6 +2837,16 @@ def create_ai_draft(article):
         lambda raw, provider: _parse_and_validate_ai_draft(raw, provider),
     )
     draft = _insert_inline_images(article, draft)
+    editorial_reviews = _run_parallel_editorial_reviews(article, draft, writer_provider)
+    draft = _apply_editorial_reviews(draft, editorial_reviews)
+    _validate_vietnamese_output(draft.get("seo_title", ""), draft.get("seo_description", ""), draft.get("seo_content", ""))
+    seo_quality_score, seo_quality_checks = _evaluate_seo_quality(draft)
+    reviewer_score = (editorial_reviews.get("seo") or {}).get("score") if isinstance(editorial_reviews.get("seo"), dict) else None
+    if isinstance(reviewer_score, int):
+        seo_quality_score = round((seo_quality_score + reviewer_score) / 2)
+    draft["seo_quality_score"] = seo_quality_score
+    draft["seo_quality_checks"] = json.dumps(seo_quality_checks, ensure_ascii=False)
+    log.info("SEO editorial quality score=%s/100 | checks=%s", seo_quality_score, json.dumps(seo_quality_checks, ensure_ascii=False))
     facts_used = [item["fact"] for item in (facts.get("facts", []) if isinstance(facts, dict) else [])[:12] if isinstance(item, dict) and item.get("fact")]
     draft["source_facts_used"] = json.dumps(facts_used, ensure_ascii=False)
 
@@ -2978,10 +3474,19 @@ def main(argv=None):
     # Reset transient provider state for each standalone invocation.
     _AI_PROVIDERS_DISABLED_FOR_RUN.clear()
     _AI_PROVIDER_COOLDOWN_UNTIL.clear()
+    _AI_PROVIDER_COOLDOWN_META.clear()
+    _AI_PROVIDER_FAILURE_COUNTS.clear()
+    global _AI_PROVIDER_STATE_LOADED
+    _AI_PROVIDER_STATE_LOADED = False
+    _ensure_provider_state_loaded()
     started_at = time.monotonic()
     args = parse_main_args(argv)
     run_limit = MAX_ARTICLES if args.limit is None else max(1, min(int(args.limit), 10))
-    max_attempts = min(50, run_limit * 3)
+    try:
+        attempt_multiplier = max(3, min(int(os.getenv("MAX_SOURCE_ATTEMPTS_MULTIPLIER", "5")), 8))
+    except ValueError:
+        attempt_multiplier = 5
+    max_attempts = min(50, run_limit * attempt_multiplier)
     log.info(
         "Mục tiêu xuất bản %s bài mới; cho phép thử tối đa %s URL mới để bù bài lỗi AI/không hợp lệ.",
         run_limit, max_attempts,

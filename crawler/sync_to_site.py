@@ -66,6 +66,9 @@ def _article_and_draft(row):
                 for key in ("source_id", "source_name", "source_domain", "source_language", "source_feed_url", "destination_country", "destination_city", "destination_status", "primary_category", "taxonomy_path", "topic_confidence"):
                     if tax.get(key) not in (None, ""):
                         article[key] = tax[key]
+                source_config = bot._source_by_id(article.get("source_id")) if article.get("source_id") else None
+                if source_config:
+                    article["allow_source_images"] = source_config.get("allow_source_images", True)
                 for source_key, target_key in (("destination_countries_json", "destination_countries"), ("categories_json", "topic_categories")):
                     try:
                         article[target_key] = json.loads(tax.get(source_key) or "[]")

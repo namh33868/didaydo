@@ -435,8 +435,9 @@ def _ensure_source_article_images(
     from image_optimizer import build_vietnamese_alt_text
 
     source_url = normalize_source_url(article.get("source_url", ""))
-    stored_images = _stored_image_list(article)
-    if not stored_images and source_url:
+    source_images_allowed = article.get("allow_source_images") is not False
+    stored_images = _stored_image_list(article) if source_images_allowed else []
+    if source_images_allowed and not stored_images and source_url:
         try:
             with sqlite3.connect(db_path, timeout=30) as conn:
                 row = conn.execute(
