@@ -1826,9 +1826,10 @@ GIỌNG VĂN
 - Tránh câu sáo rỗng, khuyến nghị chung chung, lặp ý hoặc kéo dài bài bằng suy đoán.
 
 SEO
-- Tiêu đề SEO chính xác và có ích, không giật tít quá mức.
-- Meta description đúng nội dung.
-- Chọn một từ khóa chính và 3–6 từ khóa phụ liên quan thực sự.
+- Tiêu đề SEO chính xác, tự nhiên, ưu tiên khoảng 40–65 ký tự; không giật tít quá mức.
+- Meta description khoảng 120–160 ký tự, nêu rõ lợi ích/thông tin chính và đúng nội dung.
+- Chọn một từ khóa chính và 3–6 từ khóa phụ có ý định tìm kiếm rõ ràng; đưa từ khóa chính tự nhiên vào tiêu đề, sapo và ít nhất một heading nếu phù hợp, tuyệt đối không nhồi từ khóa.
+- Bài phải giải quyết đúng nhu cầu tìm kiếm: đưa thông tin quan trọng lên sớm, có heading mô tả đúng câu hỏi người đọc, nội dung thực dụng và kết luận rõ ràng.
 - Nội dung website dùng taxonomy theo quốc gia và chủ đề. Hãy ưu tiên destination_country_hint / destination_city_hint / primary_site_category_hint đã cung cấp; nếu đang là "World / Chưa phân loại" thì không tự gán quốc gia khi không có căn cứ.
 - Nếu source_content_mode=source_body_reference: sử dụng source_reference_material như tài liệu tham khảo để xác định dữ kiện và chủ đề; không sao chép câu, không giữ nguyên thứ tự đoạn/heading và không làm bản dịch sát nghĩa. Tự thiết kế cấu trúc theo nhu cầu độc giả Việt Nam.
 - Nếu source_content_mode=metadata_only hoặc metadata_fallback: chỉ dùng title, description, ngày/chuyên mục, từ khóa metadata và ảnh; dữ kiện hạn chế thì chỉ viết bản nháp ngắn và đánh dấu cần bổ sung thông tin.
@@ -2340,7 +2341,7 @@ def _evaluate_seo_quality(draft):
     """Editorial SEO checklist; the score is not a Google ranking prediction."""
     soup = BeautifulSoup(draft.get("seo_content", "") or "", "html.parser")
     plain = clean_text(soup.get_text(" ", strip=True))
-    words = re.findall(r"[^\\W_]+", plain, flags=re.UNICODE)
+    words = re.findall(r"[^\W_]+", plain, flags=re.UNICODE)
     headings = soup.find_all(["h2", "h3"])
     paragraphs = soup.find_all("p")
     title = clean_text(draft.get("seo_title", ""))
@@ -2748,6 +2749,16 @@ def create_ai_draft(article):
         lambda raw, provider: _parse_and_validate_ai_draft(raw, provider),
     )
     draft = _insert_inline_images(article, draft)
+    editorial_reviews = _run_parallel_editorial_reviews(article, draft, writer_provider)
+    draft = _apply_editorial_reviews(draft, editorial_reviews)
+    _validate_vietnamese_output(draft.get("seo_title", ""), draft.get("seo_description", ""), draft.get("seo_content", ""))
+    seo_quality_score, seo_quality_checks = _evaluate_seo_quality(draft)
+    reviewer_score = (editorial_reviews.get("seo") or {}).get("score") if isinstance(editorial_reviews.get("seo"), dict) else None
+    if isinstance(reviewer_score, int):
+        seo_quality_score = round((seo_quality_score + reviewer_score) / 2)
+    draft["seo_quality_score"] = seo_quality_score
+    draft["seo_quality_checks"] = json.dumps(seo_quality_checks, ensure_ascii=False)
+    log.info("SEO editorial quality score=%s/100 | checks=%s", seo_quality_score, json.dumps(seo_quality_checks, ensure_ascii=False))
     facts_used = [item["fact"] for item in (facts.get("facts", []) if isinstance(facts, dict) else [])[:12] if isinstance(item, dict) and item.get("fact")]
     draft["source_facts_used"] = json.dumps(facts_used, ensure_ascii=False)
 
@@ -3383,7 +3394,11 @@ def main(argv=None):
     started_at = time.monotonic()
     args = parse_main_args(argv)
     run_limit = MAX_ARTICLES if args.limit is None else max(1, min(int(args.limit), 10))
-    max_attempts = min(50, run_limit * 3)
+    try:
+        attempt_multiplier = max(3, min(int(os.getenv("MAX_SOURCE_ATTEMPTS_MULTIPLIER", "5")), 8))
+    except ValueError:
+        attempt_multiplier = 5
+    max_attempts = min(50, run_limit * attempt_multiplier)
     log.info(
         "Mục tiêu xuất bản %s bài mới; cho phép thử tối đa %s URL mới để bù bài lỗi AI/không hợp lệ.",
         run_limit, max_attempts,
