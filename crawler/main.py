@@ -1871,6 +1871,7 @@ def _ai_instructions_and_input(article):
         "source_metadata_keywords": article.get("source_meta_keywords") or "",
         "source_content_mode": "source_body_reference" if body_available else ("metadata_only" if fact_sheet.get("metadata_only") or SOURCE_CONTEXT_MODE == "metadata_only" else "metadata_fallback"),
         "source_url": article.get("source_url", ""),
+        "allow_source_images": article.get("allow_source_images") is not False,
         "structured_fact_sheet": fact_sheet,
         # Temporary reference context: excluded from output JSON and SQLite by default.
         # Writer must extract verifiable facts and compose an independent article, not translate or paraphrase paragraph-by-paragraph.
@@ -1888,7 +1889,7 @@ def _ai_instructions_and_input(article):
             }
             for index, item in enumerate((article.get("source_images") or []), start=1)
             if isinstance(item, dict)
-        ],
+        ] if article.get("allow_source_images") is not False else [],
     }
     instructions = """
 Bạn là biên tập viên cấp cao của một trang nội dung du lịch tiếng Việt.
@@ -1899,6 +1900,9 @@ Nếu input có source_reference_material, hãy dùng nó để lấy các dữ 
 NGUYÊN TẮC NGUYÊN GỐC
 - Không viết lại từng đoạn của bài nguồn, không mô phỏng thứ tự đoạn/tiêu đề/cấu trúc của bài gốc và không thay từ đồng nghĩa để tái tạo câu chữ.
 - Dùng dữ kiện như chất liệu báo chí; tự xây dựng cấu trúc và góc biên tập phù hợp, không tối ưu để né công cụ phát hiện trùng lặp.
+- Trước khi viết, xác định nhu cầu/câu hỏi thực tế của độc giả rồi tự chọn một góc tiếp cận riêng dựa trên những dữ kiện nổi bật; không bê nguyên góc nhìn của bài nguồn.
+- Tổng hợp dữ kiện thành các nhóm có ý nghĩa với người đọc và sắp xếp theo mức độ hữu ích; không giữ thứ tự xuất hiện của dữ kiện trong bài nguồn.
+- Bài phải có giá trị biên tập vượt quá việc thuật lại nguồn: giải thích bối cảnh, làm rõ lựa chọn, hệ thống hóa lưu ý hoặc gợi ý cách lên kế hoạch khi dữ kiện hỗ trợ. Không tự nhận đã trải nghiệm/thăm địa điểm nếu nguồn không chứng minh điều đó.
 - Không thêm dữ kiện chỉ vì nó thường đúng trong các bài du lịch. Nếu dữ kiện không có trong hồ sơ, không khẳng định nó như sự thật.
 - Không biến ý kiến, cáo buộc hoặc phản ứng dư luận thành sự thật đã được xác minh; phải nêu rõ chủ thể đưa ra nhận định.
 
@@ -1918,7 +1922,7 @@ SEO
 - Nếu source_content_mode=metadata_only hoặc metadata_fallback: chỉ dùng title, description, ngày/chuyên mục, từ khóa metadata và ảnh; dữ kiện hạn chế thì chỉ viết bản nháp ngắn và đánh dấu cần bổ sung thông tin.
 - Bài có sapo, h2/h3 hợp lý và kết luận tự nhiên. Khi source_reference_material đủ thông tin, mục tiêu khoảng 600–1000 từ cho hướng dẫn du lịch, có các phần thực dụng như cách di chuyển, giấy tờ/điều kiện, chi phí nếu nguồn nêu, lịch trình, điểm cần lưu ý; không tự bịa giá/số liệu/thông tin hiện hành.
 - Với chế độ metadata-only, không biến caption ảnh thành bằng chứng chắc chắn về sự kiện; coi caption là gợi ý ngữ cảnh ảnh và ghi cần kiểm tra nếu dùng làm dữ kiện.
-- Nếu inline_image_catalog có ảnh, hãy chèn marker [[IMAGE:IMG_01]] (đúng ID có trong catalog) thành một đoạn riêng tại vị trí hợp ngữ cảnh trong content_html, ví dụ sau đoạn đang nói về ngôi làng/nghề thủ công/người được chụp. Giữ thứ tự ảnh nguồn nếu hợp lý; không dồn tất cả ảnh lên đầu. Không tự tạo ID ảnh.
+- Chỉ chèn marker ảnh nếu inline_image_catalog có ảnh và allow_source_images=true. Nếu allow_source_images=false hoặc catalog rỗng, tuyệt đối không chèn marker, URL ảnh hay thẻ img/figure; ảnh bìa sẽ được tìm riêng từ kho ảnh có giấy phép phù hợp.
 - Marker chỉ là điểm đặt ảnh; chương trình sẽ thay marker bằng HTML ảnh có kiểm soát quyền sử dụng hoặc placeholder duyệt quyền.
 - HTML văn bản chỉ dùng p, h2, h3, ul, ol, li, strong, em và marker ảnh dạng văn bản. Không tự tạo thẻ img/figure, script, iframe, style hoặc URL ảnh.
 
