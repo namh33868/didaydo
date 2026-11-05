@@ -568,8 +568,19 @@ def _ensure_source_article_images(
     source_images_allowed, blocked_source_domains = _source_image_policy(article)
     article["allow_source_images"] = source_images_allowed
 
-    # Read old photo metadata even for blocked sources so cached embeds can be removed.
-    stored_images = _stored_image_list(article)
+    # Use the normal image accessor only when source photos are allowed. For blocked
+    # sources, read metadata directly so legacy cache URLs can be stripped without
+    # accidentally treating those photos as reusable assets.
+    if source_images_allowed:
+        stored_images = _stored_image_list(article)
+    else:
+        raw_images = article.get("source_images")
+        if not isinstance(raw_images, list) and article.get("source_images_json"):
+            try:
+                raw_images = json.loads(article.get("source_images_json") or "[]")
+            except (TypeError, json.JSONDecodeError):
+                raw_images = []
+        stored_images = [item for item in (raw_images or []) if isinstance(item, dict)] if isinstance(raw_images, list) else []
     if not stored_images and source_url:
         try:
             with sqlite3.connect(db_path, timeout=30) as conn:
