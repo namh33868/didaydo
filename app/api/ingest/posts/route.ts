@@ -75,10 +75,12 @@ function resolveIngestStatus(
   requestedStatus: PostInput["status"],
   existingStatus: PostStatus | undefined,
   autoPublish: boolean,
+  holdForReview: boolean,
 ): PostStatus {
   // An ingestion retry must never unpublish a public post or restore an archived one.
   if (existingStatus === "published" || existingStatus === "archived") return existingStatus;
   if (requestedStatus === "archived") return "archived";
+  if (holdForReview) return "draft";
 
   // INGEST_AUTO_PUBLISH is the policy switch for this authenticated crawler endpoint.
   // The crawler currently sends status="draft" for compatibility with its old draft
@@ -122,7 +124,12 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
     throw new Error("Article content is empty.");
   }
   const contentHtml = cleanArticleHtml(stripPublicImageAttribution(contentToHtml(incomingContent)));
-  const status = resolveIngestStatus(input.status, existing?.status, autoPublish);
+  const status = resolveIngestStatus(
+    input.status,
+    existing?.status,
+    autoPublish,
+    input.holdForReview === true,
+  );
   const publishedAt: Date | null = status === "published"
     ? existing?.published_at || new Date()
     : status === "archived"
@@ -300,6 +307,7 @@ export async function GET(request: Request) {
       feature: "auto-publish-ingest-v2",
       autoPublishEnabled: isAutoPublishEnabled(),
       statusPolling: true,
+      reviewHoldSupported: true,
     });
   }
 
