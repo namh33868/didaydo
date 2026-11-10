@@ -14,6 +14,7 @@ export const postInputSchema = z.object({
   categories: z.array(z.string().trim().min(1).max(100)).max(12).optional().default([]),
   tags: z.array(z.string().trim().min(1).max(80)).max(20).optional().default([]),
   status: z.enum(["draft", "published", "archived"]).optional(),
+  holdForReview: z.boolean().optional().default(false),
   featured: z.boolean().optional().default(false),
   authorName: z.string().trim().max(120).optional().default("Ban biên tập"),
   sourceUrl: z.string().trim().url().max(2000).optional().or(z.literal("")),
