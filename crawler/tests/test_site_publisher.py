@@ -126,6 +126,29 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertEqual(post.call_args.kwargs["json"]["holdForReview"], True)
             record = site_publisher.get_sync_record(source_url, db_path)
             self.assertEqual(record["site_status"], "draft_review")
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE articles (
+                        id INTEGER PRIMARY KEY,
+                        source_url TEXT,
+                        seo_title TEXT,
+                        seo_content TEXT,
+                        status TEXT
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE article_taxonomy (
+                        source_url TEXT,
+                        destination_country TEXT,
+                        destination_city TEXT,
+                        primary_category TEXT,
+                        categories_json TEXT
+                    )
+                """)
+                conn.execute(
+                    "INSERT INTO articles (source_url, seo_title, seo_content, status) VALUES (?, ?, ?, ?)",
+                    (source_url, "A travel story", "<p>Editorial content.</p>", "editorial_review_required"),
+                )
             self.assertEqual(site_publisher.list_pending_drafts(db_path), [])
 
     def test_review_hold_fails_closed_when_website_api_does_not_support_it(self):
