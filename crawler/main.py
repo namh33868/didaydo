@@ -2368,19 +2368,19 @@ def _run_one_editorial_review(role, provider, instructions, payload):
 
 
 def _run_parallel_editorial_reviews(article, draft, writer_provider):
-    """Run optional SEO review plus one mandatory, independent source-fidelity review."""
+    """Run optional SEO review and require a separate source-fidelity reviewer."""
     jobs = {}
-    fact_provider = None
     fact_candidates = (
         ("OpenRouter", OPENROUTER_API_KEY),
         ("OpenAI", OPENAI_API_KEY),
         ("Gemini", GEMINI_API_KEY),
         ("Groq", GROQ_API_KEY),
     )
-    for provider, configured in fact_candidates:
-        if configured and provider != writer_provider and not _provider_unavailable_reason(provider):
-            fact_provider = provider
-            break
+    fact_providers = [
+        provider for provider, configured in fact_candidates
+        if configured and provider != writer_provider and not _provider_unavailable_reason(provider)
+    ]
+    fact_provider = fact_providers[0] if fact_providers else None
 
     review_payload = _review_payload(article, draft, 8000, 7000)
     if fact_provider:
@@ -2398,6 +2398,7 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
     if not jobs:
         results["fact"] = {"status": "failed", "provider": None, "reason": "Không có reviewer độc lập khả dụng."}
         return results
+
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = {
             pool.submit(_run_one_editorial_review, role, provider, prompt, payload): role
@@ -2413,10 +2414,37 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
             except Exception as exc:
                 _record_provider_failure(provider, exc)
                 log.warning(
-                    "AI editorial role=%s provider=%s failed; retaining writer draft (%s): %s",
+                    "AI editorial role=%s provider=%s failed (%s): %s",
                     role, provider, type(exc).__name__, clean_text(str(exc))[:180],
                 )
                 results[role] = {"status": "failed", "provider": provider, "reason": clean_text(str(exc))[:180]}
+
+                # A failed independent reviewer does not end the review chain while
+                # another configured provider can still audit the same source and draft.
+                if role == "fact":
+                    for fallback_provider in fact_providers[1:]:
+                        if _provider_unavailable_reason(fallback_provider):
+                            continue
+                        try:
+                            fallback_result = _run_one_editorial_review(
+                                "fact", fallback_provider, FACT_REVIEW_INSTRUCTIONS, review_payload
+                            )
+                            fallback_result["provider"] = fallback_provider
+                            results["fact"] = fallback_result
+                            _clear_provider_cooldown(fallback_provider)
+                            log.info(
+                                "AI editorial role=fact fallback_provider=%s completed",
+                                fallback_provider,
+                            )
+                            break
+                        except Exception as fallback_exc:
+                            _record_provider_failure(fallback_provider, fallback_exc)
+                            log.warning(
+                                "AI editorial role=fact fallback_provider=%s failed (%s): %s",
+                                fallback_provider,
+                                type(fallback_exc).__name__,
+                                clean_text(str(fallback_exc))[:180],
+                            )
     if "fact" not in results:
         results["fact"] = {"status": "failed", "provider": None, "reason": "Không có fact reviewer độc lập."}
     return results
@@ -2458,7 +2486,8 @@ def _apply_editorial_reviews(draft, reviews):
                 parts.append("Thông tin dễ thay đổi cần kiểm tra trước xuất bản: " + "; ".join(time_sensitive[:4]))
             if fact.get("notes"):
                 parts.append(fact["notes"])
-            note = f"Rà soát nguồn OpenRouter (rủi ro {fact.get('risk_level', 'medium')}; không xác minh ngoài nguồn): " + " ".join(parts)
+            reviewer_name = clean_text(fact.get("provider") or "AI")
+            note = f"Rà soát nguồn {reviewer_name} (rủi ro {fact.get('risk_level', 'medium')}; không xác minh ngoài nguồn): " + " ".join(parts)
             draft["fact_check_notes"] = (existing + " " + note).strip()[:1800]
         draft["source_fidelity_risk"] = fact.get("risk_level", "medium")
     return draft
