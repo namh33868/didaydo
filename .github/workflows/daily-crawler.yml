@@ -112,17 +112,6 @@ jobs:
           print("Vercel ingest API OK; auto-publish is enabled.")
           PY
 
-      - name: Email that crawler has started
-        if: success()
-        continue-on-error: true
-        env:
-          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
-          REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
-        run: python send_daily_report.py --stage started
-
       - name: Crawl and publish 3-10 articles (best effort)
         shell: bash
         env:

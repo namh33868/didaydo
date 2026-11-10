@@ -160,19 +160,6 @@ def main():
                 "title": published_title,
                 "url": published_url,
             })
-            if recovered_published == 1:
-                try:
-                    from send_daily_report import send_progress_notification
-                    send_progress_notification(
-                        title=published_title,
-                        url=published_url,
-                        published_count=recovered_published,
-                    )
-                except Exception as notify_exc:
-                    log.warning(
-                        "Không gửi được email tiến độ; crawler vẫn tiếp tục (%s).",
-                        type(notify_exc).__name__,
-                    )
             log.info("Đã xuất bản lại bài đang chờ: %s", result.get("site_url"))
 
     remaining = maximum - recovered_published

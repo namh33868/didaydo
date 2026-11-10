@@ -1,4 +1,4 @@
-"""Tests for concise staged crawler email notifications."""
+"""Tests for the single consolidated daily crawler email."""
 import unittest
 from unittest.mock import patch
 
@@ -54,28 +54,27 @@ class DailyReportEmailTests(unittest.TestCase):
         self.assertNotIn(long_reason, html_body)
         self.assertIn("...", html_body)
 
-    def test_started_email_reports_running_state_without_waiting_for_posts(self):
-        html_body = report._build_html(
-            {"date": "2026-11-04", "status": "running", "published_count": 0},
-            "unknown",
-            "",
-            stage="started",
-        )
-        self.assertIn("Crawler đã bắt đầu", html_body)
-        self.assertIn("Đang chạy", html_body)
-        self.assertIn("Chưa có bài được xác nhận xuất bản", html_body)
 
-    def test_only_one_progress_email_is_sent_per_run(self):
+
+    def test_report_command_sends_one_final_summary_only(self):
         with (
-            patch.object(report, "_PROGRESS_NOTIFICATION_SENT", False),
+            patch("sys.argv", ["send_daily_report.py"]),
+            patch.object(report, "_load_report", return_value={
+                "date": "2026-11-10",
+                "status": "completed",
+                "published_count": 2,
+                "articles": [],
+                "failures": [],
+            }),
             patch.object(report, "_recipients", return_value=["test@example.com"]),
             patch.object(report, "_run_url", return_value=""),
-            patch.object(report, "_load_report", return_value={}),
+            patch.object(report, "_write_summary"),
             patch.object(report, "_send_email", return_value=True) as send_email,
         ):
-            self.assertTrue(report.send_progress_notification("Bài đầu tiên", "https://example.test/post", 1))
-            self.assertFalse(report.send_progress_notification("Bài thứ hai", "https://example.test/post-2", 2))
-            send_email.assert_called_once()
+            self.assertEqual(report.main(), 0)
+
+        send_email.assert_called_once()
+        self.assertEqual(send_email.call_args.args[4], "final")
 
 
 if __name__ == "__main__":

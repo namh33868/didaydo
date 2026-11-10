@@ -1,4 +1,4 @@
-"""Compact start/progress/final email notifications for the daily travel crawler."""
+"""Send one consolidated final email for each daily crawler run."""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,6 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 REPORT_PATH = Path(__file__).resolve().parent / "logs" / "daily-report.json"
-_PROGRESS_NOTIFICATION_SENT = False
 VIETNAM_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 STATUS_LABELS = {
@@ -456,36 +455,6 @@ def _send_email(
     return False
 
 
-def send_progress_notification(title: str, url: str = "", published_count: int = 1) -> bool:
-    """Send one progress email on the first confirmed publication in this run."""
-    global _PROGRESS_NOTIFICATION_SENT
-    if _PROGRESS_NOTIFICATION_SENT:
-        return False
-    _PROGRESS_NOTIFICATION_SENT = True
-
-    now = _now()
-    report = _load_report()
-    report.update({
-        "date": report.get("date") or now.strftime("%Y-%m-%d"),
-        "status": "running",
-        "published_count": max(1, int(published_count or 1)),
-        "minimum": int(os.getenv("MIN_DAILY_ARTICLES", "3")),
-        "preferred": int(os.getenv("PREFERRED_DAILY_ARTICLES", "5")),
-        "maximum": int(os.getenv("MAX_ARTICLES", "10")),
-        "site_url": report.get("site_url") or os.getenv("SITE_URL", ""),
-        "failed_count": int(report.get("failed_count") or 0),
-    })
-    try:
-        recipients = _recipients()
-        if not recipients:
-            print("Bỏ qua email tiến độ: chưa cấu hình REPORT_EMAIL_TO.")
-            return False
-        return _send_email(report, "in_progress", recipients, _run_url(), "progress", title, url)
-    except (smtplib.SMTPException, OSError, TimeoutError, HTTPError, URLError) as exc:
-        print(f"Không gửi được email tiến độ ({type(exc).__name__}); crawler vẫn tiếp tục.")
-        return False
-
-
 def _write_summary(report: dict, job_status: str, run_url: str) -> None:
     summary_path = os.getenv("GITHUB_STEP_SUMMARY")
     if not summary_path:
@@ -516,7 +485,7 @@ def _write_summary(report: dict, job_status: str, run_url: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", choices=("started", "final"), default="final")
+    parser.add_argument("--stage", choices=("final",), default="final")
     parser.add_argument("--job-status", default=os.getenv("JOB_STATUS", "unknown"))
     args = parser.parse_args()
 
@@ -524,20 +493,7 @@ def main() -> int:
     job_status = str(args.job_status or "unknown")
     report = _load_report()
 
-    if stage == "started":
-        report = {
-            "date": _now().strftime("%Y-%m-%d"),
-            "status": "running",
-            "published_count": 0,
-            "failed_count": 0,
-            "minimum": int(os.getenv("MIN_DAILY_ARTICLES", "3")),
-            "preferred": int(os.getenv("PREFERRED_DAILY_ARTICLES", "5")),
-            "maximum": int(os.getenv("MAX_ARTICLES", "10")),
-            "site_url": os.getenv("SITE_URL", ""),
-            "articles": [],
-            "failures": [],
-        }
-    elif not report:
+    if not report:
         report = {
             "date": _now().strftime("%Y-%m-%d"),
             "status": "report_missing",
@@ -552,8 +508,7 @@ def main() -> int:
         }
 
     run_url = _run_url()
-    if stage == "final":
-        _write_summary(report, job_status, run_url)
+    _write_summary(report, job_status, run_url)
 
     recipients = _recipients()
     if not recipients:
