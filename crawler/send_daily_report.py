@@ -235,6 +235,7 @@ def _build_html(
     preferred = int(report.get("preferred") or 5)
     maximum = int(report.get("maximum") or 10)
     failures_count = int(report.get("failed_count") or 0)
+    review_required_count = int(report.get("review_required_count") or 0)
     failed_feeds = int(report.get("failed_feed_count") or 0)
     successful_feeds = int(report.get("successful_feed_count") or 0)
     label = _status_label(report, job_status, stage)
@@ -309,9 +310,12 @@ def _build_html(
         f"<td style='width:33%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
         f"<div style='font-size:25px;font-weight:700'>{minimum}</div>"
         "<div style='font-size:11px;color:#667085'>Tối thiểu</div></td>"
-        f"<td style='width:33%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
+        f"<td style='width:25%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
         f"<div style='font-size:25px;font-weight:700'>{failures_count}</div>"
         "<div style='font-size:11px;color:#667085'>Bài lỗi</div></td>"
+        f"<td style='width:25%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
+        f"<div style='font-size:25px;font-weight:700'>{review_required_count}</div>"
+        "<div style='font-size:11px;color:#667085'>Chờ duyệt</div></td>"
         "</tr></table>"
     )
 
@@ -371,6 +375,7 @@ def _build_text(
         lines.extend([
             f"Đã xuất bản: {count} bài.",
             f"Bài lỗi: {report.get('failed_count', 0)}.",
+            f"Bài chờ kiểm duyệt: {report.get('review_required_count', 0)}.",
             f"RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi.",
             "",
             "BÀI ĐÃ XUẤT BẢN:",
