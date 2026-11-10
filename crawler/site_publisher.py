@@ -33,6 +33,7 @@ if not os.path.isabs(DATABASE_PATH):
     DATABASE_PATH = str(PROJECT_DIR / DATABASE_PATH)
 
 _HEALTH_CHECKED = False
+_REVIEW_HOLD_SUPPORTED = False
 
 
 def now_iso() -> str:
@@ -219,7 +220,7 @@ def _headers() -> dict[str, str]:
 
 
 def _check_api_ready() -> None:
-    global _HEALTH_CHECKED
+    global _HEALTH_CHECKED, _REVIEW_HOLD_SUPPORTED
     if _HEALTH_CHECKED:
         return
     if not SITE_URL or not SITE_URL.startswith(("http://", "https://")):
@@ -247,6 +248,7 @@ def _check_api_ready() -> None:
             "Website API chưa xác nhận chế độ tự xuất bản. Hãy cập nhật route.ts, "
             "đặt INGEST_AUTO_PUBLISH=true trên Vercel và redeploy trước khi chạy crawler."
         )
+    _REVIEW_HOLD_SUPPORTED = data.get("reviewHoldSupported") is True
     _HEALTH_CHECKED = True
 
 
@@ -1088,8 +1090,14 @@ def recheck_published_cover_images(
     return result
 
 
-def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, force: bool = False) -> dict:
-    """Idempotently send one complete AI article to the website for publication."""
+def sync_draft_to_site(
+    article: dict,
+    draft: dict,
+    db_path: str | None = None,
+    force: bool = False,
+    hold_for_review: bool = False,
+) -> dict:
+    """Publish a passed article or store a held article as an Admin draft."""
     if not SITE_SYNC_ENABLED:
         return {"ok": True, "skipped": True, "reason": "SITE_SYNC_ENABLED=false"}
     if not SITE_URL or not SITE_INGEST_API_KEY:
@@ -1106,6 +1114,10 @@ def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, f
     if existing and existing["site_status"] == "published":
         return {"ok": True, "skipped": True, "status": "published", "slug": existing["site_slug"], "site_url": existing["site_url"]}
     _check_api_ready()
+    if hold_for_review and not _REVIEW_HOLD_SUPPORTED:
+        message = "Website chưa xác nhận hỗ trợ holdForReview; không gửi bài để tránh tự xuất bản nhầm."
+        _record_sync(target_db, source_url, status="failed", error=message)
+        raise RuntimeError(message)
     # Preflight by source URL handles the case where POST succeeded remotely but the
     # client lost the response. Never overwrite a live/published post by retrying.
     try:
@@ -1128,15 +1140,27 @@ def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, f
         if remote_status == "archived":
             _record_sync(target_db, source_url, post_id=remote_id, slug=remote_slug, status="archived", site_url=remote_url)
             return {"ok": True, "skipped": True, "status": "archived", "slug": remote_slug, "site_url": remote_url}
-        # If a previous run left this source as draft, explicitly retry with
-        # status=published. The API only promotes a draft when its auto-publish
-        # switch is enabled and the authenticated client requests publication.
+        if remote_status == "draft" and (
+            hold_for_review or (existing and existing["site_status"] == "draft_review")
+        ):
+            _record_sync(
+                target_db, source_url, post_id=remote_id, slug=remote_slug,
+                status="draft_review", site_url=remote_url,
+            )
+            return {
+                "ok": True, "skipped": True, "review_required": True,
+                "status": "draft", "slug": remote_slug, "site_url": remote_url,
+            }
+        # Ordinary technical retries can promote a previous draft. Review drafts
+        # are kept out of this path until an editor acts in Admin.
 
     try:
         selected_cover = _ensure_source_article_images(article, target_db, draft=draft)
         if not selected_cover:
             raise RuntimeError("Bài nguồn không có ảnh hợp lệ và cũng không tìm được ảnh ngoài phù hợp; bài được giữ lại.")
         payload = build_site_payload(article, draft)
+        if hold_for_review:
+            payload["holdForReview"] = True
     except Exception as exc:
         _record_sync(target_db, source_url, status="failed", error=f"Cover image: {type(exc).__name__}: {clean(exc)[:700]}")
         raise
@@ -1162,6 +1186,22 @@ def sync_draft_to_site(article: dict, draft: dict, db_path: str | None = None, f
     post_id = result.get("id")
     slug = clean(result.get("slug"))
     post_url = f"{SITE_URL}/bai-viet/{slug}" if slug else None
+    if status == "draft" and hold_for_review:
+        _record_sync(
+            target_db, source_url, post_id=post_id, slug=slug,
+            status="draft_review", site_url=post_url,
+        )
+        return {
+            "ok": True,
+            "created": result.get("action") == "created",
+            "action": result.get("action"),
+            "status": "draft",
+            "review_required": True,
+            "id": post_id,
+            "slug": slug,
+            "site_url": post_url,
+        }
+
     _record_sync(target_db, source_url, post_id=post_id, slug=slug, status=status, site_url=post_url)
 
     if status != "published":
@@ -1183,9 +1223,9 @@ def reconcile_published_posts(db_path: str | None = None, mark_published_callbac
     with sqlite3.connect(target_db, timeout=30) as conn:
         conn.row_factory = sqlite3.Row
         pending = conn.execute("""
-            SELECT s.source_url, s.site_post_id, s.site_slug, s.site_url
+            SELECT s.source_url, s.site_post_id, s.site_slug, s.site_url, s.site_status
             FROM website_sync s
-            WHERE s.site_status='draft'
+            WHERE s.site_status IN ('draft', 'draft_review')
             ORDER BY COALESCE(s.last_checked_at, s.last_synced_at) ASC
             LIMIT ?
         """, (max(1, min(int(check_limit), 100)),)).fetchall()
@@ -1203,9 +1243,10 @@ def reconcile_published_posts(db_path: str | None = None, mark_published_callbac
                 slug = clean(post.get("slug") or row["site_slug"])
                 post_id = post.get("id") or row["site_post_id"]
                 url = f"{SITE_URL}/bai-viet/{slug}" if slug else row["site_url"]
+                persisted_status = "draft_review" if status == "draft" and row["site_status"] == "draft_review" else status
                 with sqlite3.connect(target_db, timeout=30) as conn:
                     conn.execute("UPDATE website_sync SET site_post_id=?, site_slug=?, site_status=?, site_url=?, last_checked_at=?, sync_error=NULL WHERE source_url=?",
-                                 (str(post_id) if post_id else None, slug, status, url, now, source_url))
+                                 (str(post_id) if post_id else None, slug, persisted_status, url, now, source_url))
                     conn.commit()
             else:
                 with sqlite3.connect(target_db, timeout=30) as conn:

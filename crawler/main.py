@@ -192,7 +192,12 @@ def _sync_draft_to_site_if_enabled(article, draft):
         return None
     try:
         import site_publisher
-        return site_publisher.sync_draft_to_site(article, draft, DATABASE_PATH)
+        return site_publisher.sync_draft_to_site(
+            article,
+            draft,
+            DATABASE_PATH,
+            hold_for_review=(draft.get("editorial_review_status") != "passed"),
+        )
     except Exception as exc:
         # Website integration must not lose the local artifact when publication fails.
         log.exception("Xuất bản website thất bại; vẫn giữ artifact local (%s)", type(exc).__name__)
@@ -2113,7 +2118,7 @@ def _parse_and_validate_ai_draft(raw, provider):
     }
 
 
-def _call_gemini(instructions, input_data):
+def _call_gemini(instructions, input_data, max_output_tokens=None):
     from google import genai
     from google.genai import types
 
@@ -2128,7 +2133,7 @@ def _call_gemini(instructions, input_data):
     config_args = {
         "response_mime_type": "application/json",
         "temperature": 0.3,
-        "max_output_tokens": AI_MAX_OUTPUT_TOKENS,
+        "max_output_tokens": max_output_tokens or AI_MAX_OUTPUT_TOKENS,
         "thinking_config": types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
         # This workflow does not define tools; disable AFC explicitly rather than
         # initializing its automatic-call machinery for normal text generation.
@@ -2147,7 +2152,7 @@ def _call_gemini(instructions, input_data):
     return response.text or ""
 
 
-def _call_openai(instructions, input_data):
+def _call_openai(instructions, input_data, max_tokens=None):
     from openai import OpenAI
 
     client = OpenAI(api_key=OPENAI_API_KEY, timeout=float(AI_PROVIDER_TIMEOUT_SECONDS), max_retries=0)
@@ -2159,7 +2164,7 @@ def _call_openai(instructions, input_data):
         ],
         response_format={"type": "json_object"},
         temperature=0.4,
-        max_tokens=AI_MAX_OUTPUT_TOKENS,
+        max_tokens=max_tokens or AI_MAX_OUTPUT_TOKENS,
     )
     return response.choices[0].message.content or ""
 
@@ -2276,10 +2281,12 @@ Trả về DUY NHẤT JSON:
 
 FACT_REVIEW_INSTRUCTIONS = """
 Bạn là biên tập viên kiểm tra độ trung thực của bài du lịch.
-Chỉ đối chiếu bản nháp với tài liệu nguồn được cung cấp; KHÔNG tuyên bố đã xác minh độc lập trên Internet.
-Nêu thông tin trong bản nháp không được nguồn hỗ trợ, mâu thuẫn với nguồn, hoặc có thể thay đổi theo thời gian như giá, giờ mở cửa, lịch trình, quy định, vé.
-Không tự thêm dữ kiện. Nếu không thấy vấn đề có căn cứ thì để danh sách rỗng.
-Trả về DUY NHẤT JSON:
+Chỉ đối chiếu bản nháp với phần nội dung nguồn được cung cấp; KHÔNG tuyên bố đã xác minh độc lập trên Internet.
+Kiểm tra từng dữ kiện cụ thể: tên địa điểm, địa chỉ, khoảng cách, giá, giờ mở cửa, lịch hoạt động, quy định, vé, phương tiện và số liệu.
+Chỉ đánh dấu unsupported_claims khi bản nháp khẳng định điều mà nguồn không hỗ trợ; chỉ đánh dấu contradictions khi nguồn nói ngược lại.
+Đưa các dữ kiện có thể thay đổi theo thời gian vào time_sensitive_claims. Nếu nguồn quá ngắn/thiếu nội dung để đối chiếu, phải đặt risk_level="high" và giải thích trong notes.
+Chỉ được đặt risk_level="low" khi phần nguồn đủ để kiểm tra và không phát hiện dữ kiện thiếu căn cứ, mâu thuẫn hoặc cần cập nhật.
+Không suy diễn từ tiêu đề/ảnh thành dữ kiện. Không tự thêm dữ kiện. Trả về DUY NHẤT JSON:
 {
   "risk_level": "low|medium|high",
   "unsupported_claims": ["..."],
@@ -2302,6 +2309,7 @@ def _review_payload(article, draft, max_source_chars, max_draft_chars):
         "source_title": clean_text(article.get("source_title", ""))[:500],
         "source_summary": clean_text(article.get("source_summary", ""))[:1200],
         "source_url": clean_text(article.get("source_url", ""))[:1000],
+        "source_body_available": bool(source_text and len(source_text.strip()) >= 300),
         "source_reference_excerpt": _prepare_source_reference_text(source_text, max_source_chars) if source_text else "",
         "draft_title": clean_text(draft.get("seo_title", ""))[:200],
         "draft_meta_description": clean_text(draft.get("seo_description", ""))[:500],
@@ -2314,9 +2322,13 @@ def _review_payload(article, draft, max_source_chars, max_draft_chars):
 
 def _run_one_editorial_review(role, provider, instructions, payload):
     if provider == "Groq":
-        raw = _call_groq(instructions, payload, max_completion_tokens=700)
+        raw = _call_groq(instructions, payload, max_completion_tokens=1400)
     elif provider == "OpenRouter":
-        raw = _call_openrouter(instructions, payload, max_tokens=700)
+        raw = _call_openrouter(instructions, payload, max_tokens=1400)
+    elif provider == "OpenAI":
+        raw = _call_openai(instructions, payload, max_tokens=1400)
+    elif provider == "Gemini":
+        raw = _call_gemini(instructions, payload, max_output_tokens=1400)
     else:
         raise ValueError(f"Provider không hỗ trợ vai trò biên tập: {provider}")
     data = _load_json_object(raw, provider, f"{role}-review")
@@ -2337,29 +2349,56 @@ def _run_one_editorial_review(role, provider, instructions, payload):
             "critical_issues": [clean_text(x)[:180] for x in (data.get("critical_issues") or [])[:6] if isinstance(x, str) and clean_text(x)],
             "improvements": [clean_text(x)[:180] for x in (data.get("improvements") or [])[:6] if isinstance(x, str) and clean_text(x)],
         }
+    risk_level = clean_text(data.get("risk_level", "")).lower()
+    if risk_level not in {"low", "medium", "high"}:
+        raise ValueError("Fact reviewer thiếu risk_level hợp lệ; không thể coi là đã kiểm chứng.")
     unsupported = data.get("unsupported_claims", [])
     contradictions = data.get("contradictions", [])
     time_sensitive = data.get("time_sensitive_claims", [])
+    if not all(isinstance(items, list) for items in (unsupported, contradictions, time_sensitive)):
+        raise ValueError("Fact reviewer trả danh sách kiểm chứng sai định dạng.")
     return {
-        "risk_level": clean_text(data.get("risk_level", "medium")).lower()[:20],
-        "unsupported_claims": [clean_text(x)[:220] for x in unsupported[:8] if isinstance(x, str) and clean_text(x)] if isinstance(unsupported, list) else [],
-        "contradictions": [clean_text(x)[:220] for x in contradictions[:8] if isinstance(x, str) and clean_text(x)] if isinstance(contradictions, list) else [],
-        "time_sensitive_claims": [clean_text(x)[:220] for x in time_sensitive[:8] if isinstance(x, str) and clean_text(x)] if isinstance(time_sensitive, list) else [],
+        "status": "passed",
+        "risk_level": risk_level,
+        "unsupported_claims": [clean_text(x)[:220] for x in unsupported[:8] if isinstance(x, str) and clean_text(x)],
+        "contradictions": [clean_text(x)[:220] for x in contradictions[:8] if isinstance(x, str) and clean_text(x)],
+        "time_sensitive_claims": [clean_text(x)[:220] for x in time_sensitive[:8] if isinstance(x, str) and clean_text(x)],
         "notes": clean_text(data.get("notes", ""))[:700],
     }
 
 
 def _run_parallel_editorial_reviews(article, draft, writer_provider):
-    """Groq audits SEO while OpenRouter checks source fidelity; the two independent jobs run concurrently."""
+    """Run optional SEO review and require a separate source-fidelity reviewer."""
     jobs = {}
-    if GROQ_API_KEY and writer_provider != "Groq" and not _provider_unavailable_reason("Groq"):
+    fact_candidates = (
+        ("OpenRouter", OPENROUTER_API_KEY),
+        ("OpenAI", OPENAI_API_KEY),
+        ("Gemini", GEMINI_API_KEY),
+        ("Groq", GROQ_API_KEY),
+    )
+    fact_providers = [
+        provider for provider, configured in fact_candidates
+        if configured and provider != writer_provider and not _provider_unavailable_reason(provider)
+    ]
+    fact_provider = fact_providers[0] if fact_providers else None
+
+    review_payload = _review_payload(article, draft, 8000, 7000)
+    if fact_provider:
+        jobs["fact"] = (fact_provider, FACT_REVIEW_INSTRUCTIONS, review_payload)
+    else:
+        log.warning(
+            "Không có fact reviewer độc lập khả dụng (writer=%s); bài sẽ bị giữ ở trạng thái draft.",
+            writer_provider,
+        )
+
+    if GROQ_API_KEY and writer_provider != "Groq" and fact_provider != "Groq" and not _provider_unavailable_reason("Groq"):
         jobs["seo"] = ("Groq", SEO_REVIEW_INSTRUCTIONS, _review_payload(article, draft, 2200, 5000))
-    if OPENROUTER_API_KEY and writer_provider != "OpenRouter" and not _provider_unavailable_reason("OpenRouter"):
-        jobs["fact"] = ("OpenRouter", FACT_REVIEW_INSTRUCTIONS, _review_payload(article, draft, 3400, 4000))
-    if not jobs:
-        log.info("Bỏ qua editorial review: không còn reviewer khả dụng sau bước viết bài.")
-        return {}
+
     results = {}
+    if not jobs:
+        results["fact"] = {"status": "failed", "provider": None, "reason": "Không có reviewer độc lập khả dụng."}
+        return results
+
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = {
             pool.submit(_run_one_editorial_review, role, provider, prompt, payload): role
@@ -2375,10 +2414,39 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
             except Exception as exc:
                 _record_provider_failure(provider, exc)
                 log.warning(
-                    "AI editorial role=%s provider=%s failed; retaining writer draft (%s): %s",
+                    "AI editorial role=%s provider=%s failed (%s): %s",
                     role, provider, type(exc).__name__, clean_text(str(exc))[:180],
                 )
                 results[role] = {"status": "failed", "provider": provider, "reason": clean_text(str(exc))[:180]}
+
+                # A failed independent reviewer does not end the review chain while
+                # another configured provider can still audit the same source and draft.
+                if role == "fact":
+                    for fallback_provider in fact_providers[1:]:
+                        if _provider_unavailable_reason(fallback_provider):
+                            continue
+                        try:
+                            fallback_result = _run_one_editorial_review(
+                                "fact", fallback_provider, FACT_REVIEW_INSTRUCTIONS, review_payload
+                            )
+                            fallback_result["provider"] = fallback_provider
+                            results["fact"] = fallback_result
+                            _clear_provider_cooldown(fallback_provider)
+                            log.info(
+                                "AI editorial role=fact fallback_provider=%s completed",
+                                fallback_provider,
+                            )
+                            break
+                        except Exception as fallback_exc:
+                            _record_provider_failure(fallback_provider, fallback_exc)
+                            log.warning(
+                                "AI editorial role=fact fallback_provider=%s failed (%s): %s",
+                                fallback_provider,
+                                type(fallback_exc).__name__,
+                                clean_text(str(fallback_exc))[:180],
+                            )
+    if "fact" not in results:
+        results["fact"] = {"status": "failed", "provider": None, "reason": "Không có fact reviewer độc lập."}
     return results
 
 
@@ -2418,10 +2486,44 @@ def _apply_editorial_reviews(draft, reviews):
                 parts.append("Thông tin dễ thay đổi cần kiểm tra trước xuất bản: " + "; ".join(time_sensitive[:4]))
             if fact.get("notes"):
                 parts.append(fact["notes"])
-            note = f"Rà soát nguồn OpenRouter (rủi ro {fact.get('risk_level', 'medium')}; không xác minh ngoài nguồn): " + " ".join(parts)
+            reviewer_name = clean_text(fact.get("provider") or "AI")
+            note = f"Rà soát nguồn {reviewer_name} (rủi ro {fact.get('risk_level', 'medium')}; không xác minh ngoài nguồn): " + " ".join(parts)
             draft["fact_check_notes"] = (existing + " " + note).strip()[:1800]
         draft["source_fidelity_risk"] = fact.get("risk_level", "medium")
     return draft
+
+
+def _evaluate_editorial_publication_gate(article, reviews):
+    """Fail closed: only source-backed, low-risk drafts may auto-publish."""
+    reasons = []
+    source_body = str(article.get("source_body") or "").strip()
+    if SOURCE_CONTEXT_MODE != "smart" or len(source_body) < 300:
+        reasons.append("Không trích xuất được thân bài nguồn đủ dài để đối chiếu.")
+
+    fact = reviews.get("fact") if isinstance(reviews, dict) else None
+    if not isinstance(fact, dict) or fact.get("status") != "passed":
+        detail = clean_text(fact.get("reason", "")) if isinstance(fact, dict) else ""
+        reasons.append("Không có kết quả kiểm chứng độc lập thành công" + (f": {detail}" if detail else "."))
+    else:
+        risk = clean_text(fact.get("risk_level", "")).lower()
+        unsupported = fact.get("unsupported_claims") or []
+        contradictions = fact.get("contradictions") or []
+        time_sensitive = fact.get("time_sensitive_claims") or []
+        if risk != "low":
+            reasons.append(f"Fact reviewer đánh giá rủi ro {risk or 'không xác định'} (chỉ mức low mới được tự xuất bản).")
+        if unsupported:
+            reasons.append("Có dữ kiện chưa được nguồn hỗ trợ.")
+        if contradictions:
+            reasons.append("Có dữ kiện mâu thuẫn với nguồn.")
+        if time_sensitive:
+            reasons.append("Có thông tin thay đổi theo thời gian cần biên tập viên cập nhật.")
+
+    return {
+        "status": "passed" if not reasons else "required",
+        "reason": " ".join(reasons)[:1400],
+        "fact_review_provider": clean_text(fact.get("provider", "")) if isinstance(fact, dict) else "",
+        "risk_level": clean_text(fact.get("risk_level", "")) if isinstance(fact, dict) else "",
+    }
 
 
 def _evaluate_seo_quality(draft):
@@ -2843,6 +2945,19 @@ def create_ai_draft(article):
     draft = _insert_inline_images(article, draft)
     editorial_reviews = _run_parallel_editorial_reviews(article, draft, writer_provider)
     draft = _apply_editorial_reviews(draft, editorial_reviews)
+    editorial_gate = _evaluate_editorial_publication_gate(article, editorial_reviews)
+    draft["editorial_review_status"] = editorial_gate["status"]
+    draft["editorial_review_reason"] = editorial_gate["reason"]
+    draft["editorial_review_provider"] = editorial_gate["fact_review_provider"]
+    draft["editorial_review_risk"] = editorial_gate["risk_level"]
+    if editorial_gate["status"] != "passed":
+        existing_note = clean_text(draft.get("fact_check_notes", ""))
+        draft["fact_check_notes"] = (
+            existing_note + " Chưa tự xuất bản: " + editorial_gate["reason"]
+        ).strip()[:1800]
+        log.warning("Editorial publication gate=HOLD: %s", editorial_gate["reason"])
+    else:
+        log.info("Editorial publication gate=PASS: source-backed low-risk review completed.")
     _validate_vietnamese_output(draft.get("seo_title", ""), draft.get("seo_description", ""), draft.get("seo_content", ""))
     seo_quality_score, seo_quality_checks = _evaluate_seo_quality(draft)
     reviewer_score = (editorial_reviews.get("seo") or {}).get("score") if isinstance(editorial_reviews.get("seo"), dict) else None
@@ -3502,6 +3617,7 @@ def main(argv=None):
 
     processed = 0
     published_count = 0
+    review_required_count = 0
     attempted = 0
     duplicates = 0
     irrelevant_skipped = 0
@@ -3605,9 +3721,14 @@ def main(argv=None):
                     if draft:
                         consecutive_ai_failures = 0
                         article.update(draft)
-                        status = "drafted_fallback" if draft.get("ai_fallback_reason") else "drafted"
-                        if draft.get("ai_fallback_reason"):
-                            error_message = draft["ai_fallback_reason"]
+                        if draft.get("editorial_review_status") != "passed":
+                            status = "editorial_review_required"
+                            review_required_count += 1
+                            error_message = clean_text(draft.get("editorial_review_reason") or "Bài chờ biên tập viên kiểm tra dữ kiện.")[:1000]
+                        else:
+                            status = "drafted_fallback" if draft.get("ai_fallback_reason") else "drafted"
+                            if draft.get("ai_fallback_reason"):
+                                error_message = draft["ai_fallback_reason"]
                 except Exception as exc:
                     error_message = f"AI providers failed: {type(exc).__name__}: {clean_text(str(exc))[:700]}"
                     status = "ai_failed_metadata_only"
@@ -3636,7 +3757,12 @@ def main(argv=None):
             # Write a stable per-source artifact before syncing so API failures do not force AI regeneration.
             try:
                 output_paths = save_output_bundle(
-                    article, draft, stage=("draft_ready" if draft else "ai_failed_or_metadata_only"),
+                    article, draft,
+                    stage=(
+                        "editorial_review_required"
+                        if draft and draft.get("editorial_review_status") != "passed"
+                        else ("draft_ready" if draft else "ai_failed_or_metadata_only")
+                    ),
                     error=error_message,
                 )
                 article.update(output_paths)
@@ -3661,6 +3787,11 @@ def main(argv=None):
                             "url": published_url,
                         })
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
+                elif site_result and site_result.get("ok") and site_result.get("status") == "draft" and site_result.get("review_required"):
+                    log.warning(
+                        "Bài đã được lưu trong Admin ở trạng thái draft để kiểm duyệt dữ kiện: %s",
+                        site_result.get("site_url"),
+                    )
                 elif site_result and site_result.get("ok") and site_result.get("skipped"):
                     log.info("Bỏ qua bài website đã xử lý: status=%s slug=%s", site_result.get("status"), site_result.get("slug"))
                 elif site_result and not site_result.get("ok"):
@@ -3726,6 +3857,7 @@ def main(argv=None):
         f"URL mới đã thử: {attempted}/{max_attempts}\n"
         f"Bài đã xử lý: {processed}\n"
         f"Bài mới đã xuất bản: {published_count}/{run_limit}\n"
+        f"Bài chờ kiểm duyệt thủ công: {review_required_count}\n"
         f"Bài trùng đã bỏ qua: {duplicates}\n"
         f"Bài ngoài danh mục đã bỏ qua: {irrelevant_skipped}\n"
         f"Bài lỗi/chưa xuất bản: {failed}\n"
@@ -3735,6 +3867,7 @@ def main(argv=None):
     log.info(summary)
     return {
         "published_count": published_count,
+        "review_required_count": review_required_count,
         "failed": failed,
         "fatal_error": fatal_error,
         "fatal_error_reason": fatal_error_reason,

@@ -189,6 +189,57 @@ class ParallelEditorialTests(unittest.TestCase):
         self.assertGreaterEqual(checks["word_count"], 350)
 
 
+class EditorialPublicationGateTests(unittest.TestCase):
+    def setUp(self):
+        self.article = {"source_body": "Thông tin nguồn chi tiết về điểm đến và trải nghiệm. " * 20}
+        self.low_risk_review = {
+            "fact": {
+                "status": "passed",
+                "provider": "OpenRouter",
+                "risk_level": "low",
+                "unsupported_claims": [],
+                "contradictions": [],
+                "time_sensitive_claims": [],
+            }
+        }
+
+    def test_only_source_backed_low_risk_review_can_pass(self):
+        result = main._evaluate_editorial_publication_gate(self.article, self.low_risk_review)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["fact_review_provider"], "OpenRouter")
+
+    def test_missing_or_failed_reviewer_holds_article(self):
+        for reviews in ({}, {"fact": {"status": "failed", "reason": "reviewer timeout"}}):
+            with self.subTest(reviews=reviews):
+                result = main._evaluate_editorial_publication_gate(self.article, reviews)
+                self.assertEqual(result["status"], "required")
+                self.assertIn("kiểm chứng độc lập", result["reason"])
+
+    def test_short_or_missing_source_body_holds_article_even_when_reviewer_says_low(self):
+        for source_body in ("", "Nguồn quá ngắn."):
+            with self.subTest(source_body=source_body):
+                article = {"source_body": source_body}
+                result = main._evaluate_editorial_publication_gate(article, self.low_risk_review)
+                self.assertEqual(result["status"], "required")
+                self.assertIn("thân bài nguồn", result["reason"])
+
+    def test_medium_or_high_risk_and_any_claim_flags_require_human_review(self):
+        variants = (
+            {"risk_level": "medium"},
+            {"risk_level": "high"},
+            {"risk_level": "low", "unsupported_claims": ["Một con số không có trong nguồn"]},
+            {"risk_level": "low", "contradictions": ["Nguồn nói ngày khác"]},
+            {"risk_level": "low", "time_sensitive_claims": ["Giá vé hiện tại"]},
+        )
+        for changes in variants:
+            with self.subTest(changes=changes):
+                fact = dict(self.low_risk_review["fact"])
+                fact.update(changes)
+                reviews = {"fact": fact}
+                result = main._evaluate_editorial_publication_gate(self.article, reviews)
+                self.assertEqual(result["status"], "required")
+
+
 class HtmlSourceTests(unittest.TestCase):
     def test_vinpearl_listing_parser_extracts_article_cards_not_navigation(self):
         html = """

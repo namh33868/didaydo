@@ -33,6 +33,7 @@ class DailyReportEmailTests(unittest.TestCase):
                 "status": "warning",
                 "published_count": 2,
                 "failed_count": 1,
+                "review_required_count": 3,
                 "minimum": 3,
                 "preferred": 5,
                 "maximum": 10,
@@ -49,7 +50,14 @@ class DailyReportEmailTests(unittest.TestCase):
             "https://github.com/example/repo/actions/runs/1",
         )
         self.assertIn("Bài đã xuất bản", html_body)
+        self.assertIn("Chờ duyệt", html_body)
         self.assertIn("Lỗi cần chú ý", html_body)
+        text_body = report._build_text(
+            {"date": "2026-11-10", "published_count": 2, "failed_count": 1, "review_required_count": 3},
+            "success",
+            "",
+        )
+        self.assertIn("Bài chờ kiểm duyệt: 3.", text_body)
         self.assertIn("text-overflow:ellipsis", html_body)
         self.assertNotIn(long_reason, html_body)
         self.assertIn("...", html_body)

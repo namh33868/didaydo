@@ -129,6 +129,7 @@ def main():
         log.info("Bỏ qua rà soát ảnh bài cũ trong lượt chạy thường ngày.")
 
     recovered_published = 0
+    review_required_count = 0
     published_articles = []
     pending_rows = site_publisher.list_pending_drafts(db_path, limit=maximum)
     for row in pending_rows:
@@ -139,7 +140,12 @@ def main():
             log.warning("Bỏ qua artifact chưa hoàn chỉnh, chờ lần crawl sau: %s", row.get("source_url"))
             continue
         try:
-            result = site_publisher.sync_draft_to_site(article, draft, db_path)
+            result = site_publisher.sync_draft_to_site(
+                article,
+                draft,
+                db_path,
+                hold_for_review=(draft.get("editorial_review_status") != "passed"),
+            )
         except Exception as exc:
             if _is_retryable_cover_image_error(exc):
                 log.warning(
@@ -152,7 +158,10 @@ def main():
         if not result.get("ok") and not result.get("skipped"):
             log.error("Bài chờ chưa xuất bản: %s", result.get("error", "lỗi không rõ"))
             raise SystemExit(1)
-        if result.get("status") == "published" and not result.get("skipped"):
+        if result.get("status") == "draft" and result.get("review_required"):
+            review_required_count += 1
+            log.warning("Bài vẫn nằm trong Admin draft, chờ biên tập viên duyệt: %s", result.get("site_url"))
+        elif result.get("status") == "published" and not result.get("skipped"):
             recovered_published += 1
             published_title = str(row.get("seo_title") or row.get("source_title") or "Bài viết mới")
             published_url = result.get("site_url") or ""
@@ -180,6 +189,7 @@ def main():
         # only when all configured AI providers have hit a capacity/auth failure.
         crawler_result = bot.main(["--limit", str(remaining)]) or {}
         new_published = int(crawler_result.get("published_count", 0) or 0)
+        review_required_count += int(crawler_result.get("review_required_count", 0) or 0)
         failed = int(crawler_result.get("failed", 0) or 0)
         ai_quota_stop = bool(
             crawler_result.get("ai_provider_stop", crawler_result.get("ai_quota_stop"))
@@ -234,6 +244,7 @@ def main():
         "preferred": preferred,
         "maximum": maximum,
         "published_count": total_published,
+        "review_required_count": review_required_count,
         "failed_count": failed,
         "recovered_count": recovered_published,
         "new_published_count": new_published,

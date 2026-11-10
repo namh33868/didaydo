@@ -87,6 +87,122 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertIn("Cover image: RuntimeError", record["sync_error"])
 
 
+    def test_fact_review_hold_is_saved_as_non_retriable_admin_draft(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "crawler.sqlite")
+            source_url = "https://example.com/travel/review-hold"
+            article = {"source_url": source_url, "source_title": "A travel story"}
+            draft = {"seo_title": "A travel story", "seo_content": "<p>Editorial content.</p>"}
+            cover = {
+                "url": "https://images.example.test/cover.jpg",
+                "alt": "Ảnh minh họa",
+            }
+
+            def attach_cover(target_article, *_args, **_kwargs):
+                target_article["editorial_cover_image"] = cover
+                return cover
+
+            with (
+                patch.object(site_publisher, "SITE_SYNC_ENABLED", True),
+                patch.object(site_publisher, "SITE_URL", "https://didaydo.example"),
+                patch.object(site_publisher, "SITE_INGEST_API_KEY", "x" * 32),
+                patch.object(site_publisher, "_REVIEW_HOLD_SUPPORTED", True),
+                patch.object(site_publisher, "_check_api_ready"),
+                patch("site_publisher.requests.get", return_value=FakeResponse({"found": False})),
+                patch("site_publisher.requests.post", return_value=FakeResponse({
+                    "success": True,
+                    "failed": 0,
+                    "results": [{"status": "draft", "id": "123", "slug": "review-hold", "action": "created"}],
+                })) as post,
+                patch("site_publisher._ensure_source_article_images", side_effect=attach_cover),
+            ):
+                result = site_publisher.sync_draft_to_site(
+                    article, draft, db_path, hold_for_review=True
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["review_required"])
+            self.assertEqual(result["status"], "draft")
+            self.assertEqual(post.call_args.kwargs["json"]["holdForReview"], True)
+            record = site_publisher.get_sync_record(source_url, db_path)
+            self.assertEqual(record["site_status"], "draft_review")
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE articles (
+                        id INTEGER PRIMARY KEY,
+                        source_url TEXT,
+                        seo_title TEXT,
+                        seo_content TEXT,
+                        status TEXT
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE article_taxonomy (
+                        source_url TEXT,
+                        destination_country TEXT,
+                        destination_city TEXT,
+                        primary_category TEXT,
+                        categories_json TEXT
+                    )
+                """)
+                conn.execute(
+                    "INSERT INTO articles (source_url, seo_title, seo_content, status) VALUES (?, ?, ?, ?)",
+                    (source_url, "A travel story", "<p>Editorial content.</p>", "editorial_review_required"),
+                )
+            self.assertEqual(site_publisher.list_pending_drafts(db_path), [])
+
+    def test_review_hold_fails_closed_when_website_api_does_not_support_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "crawler.sqlite")
+            source_url = "https://example.com/travel/unsupported-review-hold"
+            with (
+                patch.object(site_publisher, "SITE_SYNC_ENABLED", True),
+                patch.object(site_publisher, "SITE_URL", "https://didaydo.example"),
+                patch.object(site_publisher, "SITE_INGEST_API_KEY", "x" * 32),
+                patch.object(site_publisher, "_REVIEW_HOLD_SUPPORTED", False),
+                patch.object(site_publisher, "_check_api_ready"),
+                patch("site_publisher.requests.get") as get,
+                patch("site_publisher.requests.post") as post,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "holdForReview"):
+                    site_publisher.sync_draft_to_site(
+                        {"source_url": source_url, "source_title": "A travel story"},
+                        {"seo_title": "A travel story", "seo_content": "<p>Content.</p>"},
+                        db_path,
+                        hold_for_review=True,
+                    )
+            get.assert_not_called()
+            post.assert_not_called()
+            record = site_publisher.get_sync_record(source_url, db_path)
+            self.assertEqual(record["site_status"], "failed")
+
+    def test_existing_remote_draft_stays_held_and_is_never_promoted_by_retry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "crawler.sqlite")
+            source_url = "https://example.com/travel/existing-review-draft"
+            with (
+                patch.object(site_publisher, "SITE_SYNC_ENABLED", True),
+                patch.object(site_publisher, "SITE_URL", "https://didaydo.example"),
+                patch.object(site_publisher, "SITE_INGEST_API_KEY", "x" * 32),
+                patch.object(site_publisher, "_REVIEW_HOLD_SUPPORTED", True),
+                patch.object(site_publisher, "_check_api_ready"),
+                patch("site_publisher.requests.get", return_value=FakeResponse({
+                    "found": True,
+                    "post": {"status": "draft", "id": "456", "slug": "existing-review-draft"},
+                })),
+                patch("site_publisher.requests.post") as post,
+            ):
+                result = site_publisher.sync_draft_to_site(
+                    {"source_url": source_url, "source_title": "A travel story"},
+                    {"seo_title": "A travel story", "seo_content": "<p>Content.</p>"},
+                    db_path,
+                    hold_for_review=True,
+                )
+            post.assert_not_called()
+            self.assertTrue(result["skipped"])
+            self.assertTrue(result["review_required"])
+            self.assertEqual(site_publisher.get_sync_record(source_url, db_path)["site_status"], "draft_review")
+
     def test_payload_preserves_multiple_classified_categories(self):
         article = {
             "source_url": "https://travel.example.com/story",

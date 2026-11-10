@@ -171,7 +171,13 @@ def main():
                 failed += 1
             continue
         try:
-            result = site_publisher.sync_draft_to_site(article, draft, bot.DATABASE_PATH, force=args.force)
+            result = site_publisher.sync_draft_to_site(
+                article,
+                draft,
+                bot.DATABASE_PATH,
+                force=args.force,
+                hold_for_review=(draft.get("editorial_review_status") != "passed"),
+            )
             if result.get("skipped"):
                 print(f"Đã đồng bộ trước đó — bỏ qua: {source_url} ({result.get('status')})")
                 skipped += 1
