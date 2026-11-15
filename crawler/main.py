@@ -155,6 +155,19 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free").strip() or "
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "http://localhost").strip()
 OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "Travel Content Bot").strip()
 
+# The preferred writer is explicit in GitHub Actions. Other configured models
+# remain emergency fallbacks only when Gemini is unavailable or the request fails.
+_AI_WRITER_PROVIDER_NAMES = {
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "groq": "Groq",
+    "openrouter": "OpenRouter",
+}
+AI_WRITER_PROVIDER = _AI_WRITER_PROVIDER_NAMES.get(
+    os.getenv("AI_WRITER_PROVIDER", "Gemini").strip().casefold(),
+    "Gemini",
+)
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
@@ -177,8 +190,8 @@ if _MISPLACED_GROQ_KEY:
         "OPENAI_API_KEY có tiền tố gsk_; đây là định dạng key Groq. Đã tự chuyển key này sang provider Groq cho phiên chạy hiện tại; hãy chuyển key sang GROQ_API_KEY trong .env. Không có key nào được in ra log."
     )
 log.info(
-    "AI config loaded: dotenv=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | Groq context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
-    os.path.join(PROJECT_DIR, ".env"), GEMINI_TIMEOUT_MS / 1000.0,
+    "AI config loaded: writer_preference=%s | Gemini model=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | Groq context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
+    AI_WRITER_PROVIDER, GEMINI_MODEL, GEMINI_TIMEOUT_MS / 1000.0,
     AI_PROVIDER_TIMEOUT_SECONDS, GEMINI_RETRY_ATTEMPTS, AI_MAX_OUTPUT_TOKENS, GROQ_MAX_OUTPUT_TOKENS,
     MAX_SOURCE_BODY_CHARS, GROQ_MAX_SOURCE_CONTEXT_CHARS, AI_MAX_CONSECUTIVE_FAILURES, bool(GROQ_API_KEY),
     SOURCE_IMAGE_REUSE_AUTHORIZED, SOURCE_CONTEXT_MODE,
@@ -2563,7 +2576,7 @@ def _evaluate_seo_quality(draft):
 
 
 def _configured_ai_providers(instructions, input_data):
-    """Order: Gemini -> real OpenAI key (if configured) -> Groq -> OpenRouter."""
+    """Use the configured primary writer first; keep the other providers as fallback."""
     providers = []
 
     def add_provider(name, configured, request_fn):
@@ -2575,21 +2588,32 @@ def _configured_ai_providers(instructions, input_data):
             return
         providers.append((name, request_fn))
 
-    add_provider("Gemini", GEMINI_API_KEY, lambda: _call_gemini(instructions, input_data))
-    add_provider("OpenAI", OPENAI_API_KEY, lambda: _call_openai(instructions, input_data))
-
-    if GROQ_API_KEY and not _provider_unavailable_reason("Groq"):
+    def groq_request():
         groq_input = _groq_request_input(input_data)
         log.info(
             "Groq fallback input: source_context_chars=%s (full provider context=%s)",
             groq_input.get("source_reference_chars", 0),
             len(str(input_data.get("source_reference_material") or "")),
         )
-        add_provider("Groq", True, lambda: _call_groq(instructions, groq_input))
-    elif GROQ_API_KEY:
-        log.info("AI provider=Groq tạm bỏ qua trong lượt chạy: %s", _provider_unavailable_reason("Groq"))
+        return _call_groq(instructions, groq_input)
 
-    add_provider("OpenRouter", OPENROUTER_API_KEY, lambda: _call_openrouter(instructions, input_data))
+    request_by_provider = {
+        "Gemini": (GEMINI_API_KEY, lambda: _call_gemini(instructions, input_data)),
+        "OpenAI": (OPENAI_API_KEY, lambda: _call_openai(instructions, input_data)),
+        "Groq": (GROQ_API_KEY, groq_request),
+        "OpenRouter": (OPENROUTER_API_KEY, lambda: _call_openrouter(instructions, input_data)),
+    }
+    fallback_order = ["Gemini", "OpenAI", "Groq", "OpenRouter"]
+    ordered_names = [AI_WRITER_PROVIDER] + [
+        name for name in fallback_order if name != AI_WRITER_PROVIDER
+    ]
+    log.info(
+        "AI writer preference=%s; fallback order=%s",
+        AI_WRITER_PROVIDER, " -> ".join(ordered_names[1:]) or "không có",
+    )
+    for name in ordered_names:
+        configured, request_fn = request_by_provider[name]
+        add_provider(name, configured, request_fn)
     return providers
 
 

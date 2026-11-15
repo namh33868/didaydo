@@ -13,6 +13,46 @@ from zoneinfo import ZoneInfo
 import main
 
 
+class PreferredWriterProviderTests(unittest.TestCase):
+    def test_gemini_is_the_primary_writer_with_other_providers_as_fallbacks(self):
+        with (
+            patch.object(main, "AI_WRITER_PROVIDER", "Gemini"),
+            patch.object(main, "GEMINI_API_KEY", "test-gemini"),
+            patch.object(main, "OPENAI_API_KEY", "test-openai"),
+            patch.object(main, "GROQ_API_KEY", "test-groq"),
+            patch.object(main, "OPENROUTER_API_KEY", "test-openrouter"),
+            patch.object(main, "_provider_unavailable_reason", return_value=""),
+        ):
+            providers = main._configured_ai_providers(
+                "writer instructions",
+                {"source_reference_material": "Source content."},
+            )
+
+        self.assertEqual(
+            [name for name, _request in providers],
+            ["Gemini", "OpenAI", "Groq", "OpenRouter"],
+        )
+
+    def test_gemini_daily_quota_uses_the_next_configured_fallback(self):
+        def unavailable_reason(provider):
+            return "daily_quota" if provider == "Gemini" else ""
+
+        with (
+            patch.object(main, "AI_WRITER_PROVIDER", "Gemini"),
+            patch.object(main, "GEMINI_API_KEY", "test-gemini"),
+            patch.object(main, "OPENAI_API_KEY", "test-openai"),
+            patch.object(main, "GROQ_API_KEY", ""),
+            patch.object(main, "OPENROUTER_API_KEY", "test-openrouter"),
+            patch.object(main, "_provider_unavailable_reason", side_effect=unavailable_reason),
+        ):
+            providers = main._configured_ai_providers("writer instructions", {})
+
+        self.assertEqual(
+            [name for name, _request in providers],
+            ["OpenAI", "OpenRouter"],
+        )
+
+
 class AdaptiveCooldownTests(unittest.TestCase):
     def setUp(self):
         self.previous = {
