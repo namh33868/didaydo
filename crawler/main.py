@@ -191,7 +191,7 @@ if _MISPLACED_GROQ_KEY:
     )
 log.info(
     "AI config loaded: writer_preference=%s | Gemini model=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | Groq context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
-    AI_WRITER_PROVIDER, GEMINI_MODEL, os.path.join(PROJECT_DIR, ".env"), GEMINI_TIMEOUT_MS / 1000.0,
+    AI_WRITER_PROVIDER, GEMINI_MODEL, GEMINI_TIMEOUT_MS / 1000.0,
     AI_PROVIDER_TIMEOUT_SECONDS, GEMINI_RETRY_ATTEMPTS, AI_MAX_OUTPUT_TOKENS, GROQ_MAX_OUTPUT_TOKENS,
     MAX_SOURCE_BODY_CHARS, GROQ_MAX_SOURCE_CONTEXT_CHARS, AI_MAX_CONSECUTIVE_FAILURES, bool(GROQ_API_KEY),
     SOURCE_IMAGE_REUSE_AUTHORIZED, SOURCE_CONTEXT_MODE,
