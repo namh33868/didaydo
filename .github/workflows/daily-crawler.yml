@@ -32,6 +32,8 @@ jobs:
       IMAGE_RECHECK_PER_RUN: "0"
       SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
       SOURCE_CONTEXT_MODE: "smart"
+      AI_WRITER_PROVIDER: "Gemini"
+      GEMINI_MODEL: "gemini-3.8-flash"
       MAX_SOURCE_BODY_CHARS: "22000"
       GROQ_MAX_SOURCE_CONTEXT_CHARS: "4000"
       AI_MAX_OUTPUT_TOKENS: "12000"
