@@ -168,6 +168,7 @@ def main():
             published_articles.append({
                 "title": published_title,
                 "url": published_url,
+                "ai_provider": str(row.get("ai_provider") or ""),
             })
             log.info("Đã xuất bản lại bài đang chờ: %s", result.get("site_url"))
 
@@ -244,6 +245,8 @@ def main():
         "preferred": preferred,
         "maximum": maximum,
         "published_count": total_published,
+        "article_writer_provider": crawler_result.get("article_writer_provider") or bot.AI_WRITER_PROVIDER,
+        "article_writer_mode": crawler_result.get("article_writer_mode") or "strict",
         "review_required_count": review_required_count,
         "failed_count": failed,
         "recovered_count": recovered_published,

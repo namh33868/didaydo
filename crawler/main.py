@@ -71,8 +71,8 @@ if not os.path.isabs(OUTPUT_DIR):
     OUTPUT_DIR = os.path.join(PROJECT_DIR, OUTPUT_DIR)
 OUTPUT_DIR = os.path.abspath(OUTPUT_DIR)
 DRAFT_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "drafts")
-# AI failover order: Gemini -> direct OpenAI API -> optional legacy OpenRouter.
-# Gemini is the preferred provider. OpenAI API can incur separate charges.
+# Gemini is the exclusive article writer. Other configured providers may only
+# assist with independent fact/SEO reviews; they never replace Gemini as author.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
 # Timeout tối đa cho từng lần gọi provider. Mặc định 300 giây (5 phút).
@@ -2575,8 +2575,8 @@ def _evaluate_seo_quality(draft):
     return max(0, score), checks
 
 
-def _configured_ai_providers(instructions, input_data):
-    """Use the configured primary writer first; keep the other providers as fallback."""
+def _configured_ai_providers(instructions, input_data, *, strict_writer=False):
+    """Build provider candidates; strict article-writing uses only the selected writer."""
     providers = []
 
     def add_provider(name, configured, request_fn):
@@ -2604,13 +2604,23 @@ def _configured_ai_providers(instructions, input_data):
         "OpenRouter": (OPENROUTER_API_KEY, lambda: _call_openrouter(instructions, input_data)),
     }
     fallback_order = ["Gemini", "OpenAI", "Groq", "OpenRouter"]
-    ordered_names = [AI_WRITER_PROVIDER] + [
-        name for name in fallback_order if name != AI_WRITER_PROVIDER
-    ]
-    log.info(
-        "AI writer preference=%s; fallback order=%s",
-        AI_WRITER_PROVIDER, " -> ".join(ordered_names[1:]) or "không có",
-    )
+    if strict_writer:
+        # The writer is intentionally locked to the configured provider. Other
+        # vendors may review a completed draft, but must never silently replace
+        # Gemini as the article author when Gemini is unavailable.
+        ordered_names = [AI_WRITER_PROVIDER]
+        log.info(
+            "AI article writer locked=%s (strict mode; no writer fallback)",
+            AI_WRITER_PROVIDER,
+        )
+    else:
+        ordered_names = [AI_WRITER_PROVIDER] + [
+            name for name in fallback_order if name != AI_WRITER_PROVIDER
+        ]
+        log.info(
+            "AI provider order for non-writer stage: %s",
+            " -> ".join(ordered_names),
+        )
     for name in ordered_names:
         configured, request_fn = request_by_provider[name]
         add_provider(name, configured, request_fn)
@@ -2618,8 +2628,29 @@ def _configured_ai_providers(instructions, input_data):
 
 
 def _call_json_with_fallback(stage_name, instructions, input_data, validator):
-    providers = _configured_ai_providers(instructions, input_data)
+    strict_writer = stage_name == "article-writing"
+    providers = _configured_ai_providers(
+        instructions, input_data, strict_writer=strict_writer
+    )
     if not providers:
+        if strict_writer:
+            configured_key = {
+                "Gemini": GEMINI_API_KEY,
+                "OpenAI": OPENAI_API_KEY,
+                "Groq": GROQ_API_KEY,
+                "OpenRouter": OPENROUTER_API_KEY,
+            }.get(AI_WRITER_PROVIDER, "")
+            reason = _provider_unavailable_reason(AI_WRITER_PROVIDER)
+            if not configured_key:
+                raise RuntimeError(
+                    f"AI writer chính {AI_WRITER_PROVIDER} chưa được cấu hình API key; "
+                    "không dùng AI provider khác để viết thay."
+                )
+            raise RuntimeError(
+                f"AI writer chính {AI_WRITER_PROVIDER} hiện không khả dụng"
+                + (f" ({reason})" if reason else "")
+                + "; không dùng AI provider khác để viết thay."
+            )
         configured_names = [
             name for name, key in (
                 ("Gemini", GEMINI_API_KEY),
@@ -2673,6 +2704,12 @@ def _call_json_with_fallback(stage_name, instructions, input_data, validator):
                 "AI stage=%s provider=%s failed elapsed=%.1fs error=%s: %s",
                 stage_name, provider_name, elapsed, type(exc).__name__, message,
             )
+    if strict_writer:
+        raise RuntimeError(
+            f"AI writer chính {AI_WRITER_PROVIDER} thất bại ở bước {stage_name}: "
+            + " | ".join(errors)
+            + "; không chuyển sang AI provider khác để viết bài."
+        )
     raise RuntimeError(f"Tất cả AI provider thất bại ở bước {stage_name}: " + " | ".join(errors))
 
 
@@ -3809,6 +3846,7 @@ def main(argv=None):
                         published_articles.append({
                             "title": published_title,
                             "url": published_url,
+                            "ai_provider": clean_text(draft.get("ai_provider") or writer_provider),
                         })
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
                 elif site_result and site_result.get("ok") and site_result.get("status") == "draft" and site_result.get("review_required"):
@@ -3891,6 +3929,8 @@ def main(argv=None):
     log.info(summary)
     return {
         "published_count": published_count,
+        "article_writer_provider": AI_WRITER_PROVIDER,
+        "article_writer_mode": "strict",
         "review_required_count": review_required_count,
         "failed": failed,
         "fatal_error": fatal_error,

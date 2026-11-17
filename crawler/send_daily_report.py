@@ -142,13 +142,18 @@ def _article_list(articles: list[dict]) -> str:
             continue
         title = _esc(item.get("title") or "Bài viết mới")
         url = str(item.get("url") or "").strip()
+        provider = _esc(item.get("ai_provider") or "")
+        provider_label = (
+            f"<div style='color:#667085;font-size:11px'>AI viết bài: {provider}</div>"
+            if provider else ""
+        )
         if url.startswith(("https://", "http://")):
             rows.append(
                 f"<li style='margin:0 0 8px'><a href='{_esc(url)}' "
-                f"style='color:#176b50;text-decoration:none'>{title}</a></li>"
+                f"style='color:#176b50;text-decoration:none'>{title}</a>{provider_label}</li>"
             )
         else:
-            rows.append(f"<li style='margin:0 0 8px'>{title}</li>")
+            rows.append(f"<li style='margin:0 0 8px'>{title}{provider_label}</li>")
     return "<ol style='padding-left:22px;margin:8px 0'>" + "".join(rows) + "</ol>" if rows else (
         "<p style='margin:8px 0;color:#667085'>Chưa có bài nào được xác nhận xuất bản.</p>"
     )
@@ -321,9 +326,16 @@ def _build_html(
 
     extra_stats = ""
     if stage == "final":
+        writer_provider = _esc(report.get("article_writer_provider") or "Không xác định")
+        writer_mode = str(report.get("article_writer_mode") or "").strip().lower()
+        writer_mode_label = (
+            "khóa writer, không chuyển sang nhà cung cấp khác"
+            if writer_mode == "strict" else "có thể dùng nhà cung cấp dự phòng"
+        )
         extra_stats = (
             f"<p style='margin:12px 0 0;color:#667085;font-size:12px'>"
-            f"RSS: {successful_feeds} feed đọc được · {failed_feeds} feed lỗi"
+            f"AI viết bài: <strong>{writer_provider}</strong> ({writer_mode_label})"
+            f"<br>RSS: {successful_feeds} feed đọc được · {failed_feeds} feed lỗi"
             f" &nbsp;|&nbsp; Mục tiêu: {minimum} tối thiểu / {preferred} mong muốn / {maximum} tối đa"
             f" &nbsp;|&nbsp; Thời gian: {_esc(_duration(report.get('duration_seconds')))}"
             "</p>"
@@ -374,6 +386,8 @@ def _build_text(
     else:
         lines.extend([
             f"Đã xuất bản: {count} bài.",
+            f"AI viết bài: {report.get('article_writer_provider', 'Không xác định')} "
+            + ("(khóa writer, không chuyển nhà cung cấp)." if report.get("article_writer_mode") == "strict" else ""),
             f"Bài lỗi: {report.get('failed_count', 0)}.",
             f"Bài chờ kiểm duyệt: {report.get('review_required_count', 0)}.",
             f"RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi.",
@@ -383,6 +397,7 @@ def _build_text(
         articles = report.get("articles") if isinstance(report.get("articles"), list) else []
         lines.extend(
             f"- {item.get('title') or 'Bài mới'}: {item.get('url') or ''}"
+            + (f" | AI viết: {item.get('ai_provider')}" if item.get("ai_provider") else "")
             for item in articles if isinstance(item, dict)
         )
         failures = report.get("failures") if isinstance(report.get("failures"), list) else []

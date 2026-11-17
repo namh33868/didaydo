@@ -34,6 +34,7 @@ jobs:
       SOURCE_CONTEXT_MODE: "smart"
       AI_WRITER_PROVIDER: "Gemini"
       GEMINI_MODEL: "gemini-3.8-flash"
+      GEMINI_RETRY_ATTEMPTS: "3"
       MAX_SOURCE_BODY_CHARS: "22000"
       GROQ_MAX_SOURCE_CONTEXT_CHARS: "4000"
       AI_MAX_OUTPUT_TOKENS: "12000"
@@ -84,6 +85,10 @@ jobs:
           fi
           if [ -z "$SITE_INGEST_API_KEY" ]; then
             echo "Missing GitHub Actions secret SITE_INGEST_API_KEY."
+            exit 1
+          fi
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "Missing GitHub Actions secret GEMINI_API_KEY. Gemini is the only article writer."
             exit 1
           fi
           if [ -z "${GEMINI_API_KEY}${OPENAI_API_KEY}${GROQ_API_KEY}${OPENROUTER_API_KEY}" ]; then

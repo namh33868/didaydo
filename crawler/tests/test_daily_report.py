@@ -64,6 +64,34 @@ class DailyReportEmailTests(unittest.TestCase):
 
 
 
+    def test_final_report_names_the_strict_gemini_writer(self):
+        report_data = {
+            "date": "2026-11-17",
+            "status": "warning",
+            "published_count": 1,
+            "failed_count": 1,
+            "review_required_count": 0,
+            "minimum": 3,
+            "preferred": 10,
+            "maximum": 10,
+            "article_writer_provider": "Gemini",
+            "article_writer_mode": "strict",
+            "articles": [{
+                "title": "Bài du lịch",
+                "url": "https://example.test/post",
+                "ai_provider": "Gemini (viết bài từ source context)",
+            }],
+        }
+        html_body = report._build_html(report_data, "success", "")
+        text_body = report._build_text(report_data, "success", "")
+
+        self.assertIn("AI viết bài:", html_body)
+        self.assertIn("Gemini", html_body)
+        self.assertIn("khóa writer", html_body)
+        self.assertIn("AI viết bài: Gemini", text_body)
+        self.assertIn("khóa writer", text_body)
+        self.assertIn("AI viết: Gemini (viết bài từ source context)", text_body)
+
     def test_report_command_sends_one_final_summary_only(self):
         with (
             patch("sys.argv", ["send_daily_report.py"]),

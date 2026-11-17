@@ -174,6 +174,35 @@ class AIResilienceTests(unittest.TestCase):
         ))
         self.assertFalse(main._is_cover_only_publish_failure("HTTP 500: Vercel ingest API unavailable"))
 
+    def test_article_writing_never_falls_back_from_gemini_to_groq(self):
+        with (
+            patch.object(main, "AI_WRITER_PROVIDER", "Gemini"),
+            patch.object(main, "GEMINI_API_KEY", "test-gemini-key"),
+            patch.object(main, "OPENAI_API_KEY", ""),
+            patch.object(main, "GROQ_API_KEY", "test-groq-key"),
+            patch.object(main, "OPENROUTER_API_KEY", "test-openrouter-key"),
+            patch.object(
+                main,
+                "_call_gemini",
+                side_effect=RuntimeError("503 UNAVAILABLE: Gemini is temporarily overloaded"),
+            ) as gemini,
+            patch.object(main, "_call_groq", return_value='{"ok": true}') as groq,
+            patch.object(main, "_call_openrouter", return_value='{"ok": true}') as openrouter,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "không chuyển sang AI provider khác để viết bài"
+            ):
+                main._call_json_with_fallback(
+                    "article-writing",
+                    "instructions",
+                    {"input": "small"},
+                    lambda raw, _provider: raw,
+                )
+
+        gemini.assert_called_once()
+        groq.assert_not_called()
+        openrouter.assert_not_called()
+
     def test_fallback_tries_next_provider_after_one_provider_fails(self):
         def fail():
             raise RuntimeError("temporary provider outage")
