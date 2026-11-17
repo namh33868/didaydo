@@ -466,7 +466,7 @@ def _build_text(
             + (
                 " | AI kiểm duyệt (không viết bài): "
                 + ", ".join(
-                    f"{role}={provider}"
+                    f"{ {'fact': 'Kiểm chứng nguồn', 'seo': 'SEO'}.get(role, role) }={provider}"
                     for role, provider in (item.get("review_providers") or {}).items()
                     if role in {"fact", "seo"} and provider
                 )
