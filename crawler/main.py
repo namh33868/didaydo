@@ -3846,6 +3846,7 @@ def main(argv=None):
                         published_articles.append({
                             "title": published_title,
                             "url": published_url,
+                            "ai_provider": clean_text(draft.get("ai_provider") or writer_provider),
                         })
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
                 elif site_result and site_result.get("ok") and site_result.get("status") == "draft" and site_result.get("review_required"):
@@ -3928,6 +3929,8 @@ def main(argv=None):
     log.info(summary)
     return {
         "published_count": published_count,
+        "article_writer_provider": AI_WRITER_PROVIDER,
+        "article_writer_mode": "strict",
         "review_required_count": review_required_count,
         "failed": failed,
         "fatal_error": fatal_error,
