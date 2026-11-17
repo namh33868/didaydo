@@ -101,7 +101,7 @@ class DailyReportEmailTests(unittest.TestCase):
         self.assertIn("writer độc quyền", text_body)
         self.assertIn("AI viết: Gemini", text_body)
         self.assertIn("Gemini viết xong", html_body)
-        self.assertIn("Bản nháp AI tạo thành công: 2/3", html_body)
+        self.assertIn("Bản nháp AI tạo thành công: <strong>2/3</strong>", html_body)
         self.assertIn("Lỗi writer: 1", html_body)
         self.assertIn("AI kiểm duyệt (không viết bài)", html_body)
         self.assertIn("Kiểm chứng nguồn — OpenAI: 1 thành công", html_body)
