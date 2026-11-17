@@ -71,8 +71,8 @@ if not os.path.isabs(OUTPUT_DIR):
     OUTPUT_DIR = os.path.join(PROJECT_DIR, OUTPUT_DIR)
 OUTPUT_DIR = os.path.abspath(OUTPUT_DIR)
 DRAFT_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "drafts")
-# AI failover order: Gemini -> direct OpenAI API -> optional legacy OpenRouter.
-# Gemini is the preferred provider. OpenAI API can incur separate charges.
+# Gemini is the exclusive article writer. Other configured providers may only
+# assist with independent fact/SEO reviews; they never replace Gemini as author.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
 # Timeout tối đa cho từng lần gọi provider. Mặc định 300 giây (5 phút).
