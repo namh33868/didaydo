@@ -1,5 +1,7 @@
 """Regression tests for AI request sizing and fallback resilience."""
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import main
@@ -7,16 +9,40 @@ import main
 
 class AIResilienceTests(unittest.TestCase):
     def setUp(self):
-        self.previous_disabled = dict(main._AI_PROVIDERS_DISABLED_FOR_RUN)
-        self.previous_cooldowns = dict(main._AI_PROVIDER_COOLDOWN_UNTIL)
+        self.previous = {
+            "disabled": dict(main._AI_PROVIDERS_DISABLED_FOR_RUN),
+            "cooldowns": dict(main._AI_PROVIDER_COOLDOWN_UNTIL),
+            "meta": dict(main._AI_PROVIDER_COOLDOWN_META),
+            "counts": dict(main._AI_PROVIDER_FAILURE_COUNTS),
+            "loaded": main._AI_PROVIDER_STATE_LOADED,
+        }
+        self.production_state_path = main._AI_PROVIDER_STATE_PATH
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.state_path = str(Path(self.temp_dir.name) / "ai_provider_state.json")
+        self.path_patch = patch.object(main, "_AI_PROVIDER_STATE_PATH", self.state_path)
+        self.path_patch.start()
+
+        # These tests deliberately simulate provider failures. Never let those
+        # synthetic cooldowns read from or overwrite crawler/data state that the
+        # real daily crawler restores from the GitHub Actions cache.
         main._AI_PROVIDERS_DISABLED_FOR_RUN.clear()
         main._AI_PROVIDER_COOLDOWN_UNTIL.clear()
+        main._AI_PROVIDER_COOLDOWN_META.clear()
+        main._AI_PROVIDER_FAILURE_COUNTS.clear()
+        main._AI_PROVIDER_STATE_LOADED = True
 
     def tearDown(self):
+        self.path_patch.stop()
         main._AI_PROVIDERS_DISABLED_FOR_RUN.clear()
-        main._AI_PROVIDERS_DISABLED_FOR_RUN.update(self.previous_disabled)
+        main._AI_PROVIDERS_DISABLED_FOR_RUN.update(self.previous["disabled"])
         main._AI_PROVIDER_COOLDOWN_UNTIL.clear()
-        main._AI_PROVIDER_COOLDOWN_UNTIL.update(self.previous_cooldowns)
+        main._AI_PROVIDER_COOLDOWN_UNTIL.update(self.previous["cooldowns"])
+        main._AI_PROVIDER_COOLDOWN_META.clear()
+        main._AI_PROVIDER_COOLDOWN_META.update(self.previous["meta"])
+        main._AI_PROVIDER_FAILURE_COUNTS.clear()
+        main._AI_PROVIDER_FAILURE_COUNTS.update(self.previous["counts"])
+        main._AI_PROVIDER_STATE_LOADED = self.previous["loaded"]
+        self.temp_dir.cleanup()
 
     def test_source_reference_is_bounded_and_preserves_both_ends(self):
         source = "INTRO " + ("A" * 180) + " MIDDLE " + ("B" * 180) + " ENDING"
@@ -111,6 +137,8 @@ class AIResilienceTests(unittest.TestCase):
         self.assertEqual(gemini.call_count, 1)
         self.assertEqual(groq.call_count, 2)
         self.assertIn("Gemini", main._AI_PROVIDERS_DISABLED_FOR_RUN)
+        self.assertTrue(Path(self.state_path).is_file())
+        self.assertNotEqual(self.state_path, self.production_state_path)
 
     def test_transient_rate_limit_puts_provider_on_cooldown(self):
         with (
@@ -138,6 +166,7 @@ class AIResilienceTests(unittest.TestCase):
         self.assertEqual(gemini.call_count, 1)
         self.assertEqual(groq.call_count, 2)
         self.assertIn("Gemini", main._AI_PROVIDER_COOLDOWN_UNTIL)
+        self.assertTrue(Path(self.state_path).is_file())
 
     def test_cover_image_failure_is_article_level_not_site_failure(self):
         self.assertTrue(main._is_cover_only_publish_failure(
