@@ -96,9 +96,9 @@ class DailyReportEmailTests(unittest.TestCase):
 
         self.assertIn("AI viết bài:", html_body)
         self.assertIn("Gemini", html_body)
-        self.assertIn("khóa writer", html_body)
+        self.assertIn("writer độc quyền", html_body)
         self.assertIn("AI viết bài: Gemini", text_body)
-        self.assertIn("khóa writer", text_body)
+        self.assertIn("writer độc quyền", text_body)
         self.assertIn("AI viết: Gemini", text_body)
         self.assertIn("Gemini viết xong", html_body)
         self.assertIn("Bản nháp AI tạo thành công: 2/3", html_body)
