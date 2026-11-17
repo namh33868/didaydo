@@ -25,7 +25,9 @@ permissions:
 
 concurrency:
   group: daily-travel-crawler-${{ github.ref }}
-  cancel-in-progress: false
+  # A code push should supersede a stale run on the old crawler revision.
+  # Scheduled/manual runs do not cancel each other.
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   crawl-and-publish:
