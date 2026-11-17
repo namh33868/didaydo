@@ -16,6 +16,7 @@ class AIResilienceTests(unittest.TestCase):
             "counts": dict(main._AI_PROVIDER_FAILURE_COUNTS),
             "loaded": main._AI_PROVIDER_STATE_LOADED,
         }
+        self.production_state_path = main._AI_PROVIDER_STATE_PATH
         self.temp_dir = tempfile.TemporaryDirectory()
         self.state_path = str(Path(self.temp_dir.name) / "ai_provider_state.json")
         self.path_patch = patch.object(main, "_AI_PROVIDER_STATE_PATH", self.state_path)
@@ -137,7 +138,7 @@ class AIResilienceTests(unittest.TestCase):
         self.assertEqual(groq.call_count, 2)
         self.assertIn("Gemini", main._AI_PROVIDERS_DISABLED_FOR_RUN)
         self.assertTrue(Path(self.state_path).is_file())
-        self.assertNotEqual(self.state_path, main.PROJECT_DIR + "/data/ai_provider_state.json")
+        self.assertNotEqual(self.state_path, self.production_state_path)
 
     def test_transient_rate_limit_puts_provider_on_cooldown(self):
         with (
