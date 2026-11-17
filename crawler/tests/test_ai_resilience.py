@@ -203,6 +203,35 @@ class AIResilienceTests(unittest.TestCase):
         groq.assert_not_called()
         openrouter.assert_not_called()
 
+    def test_review_attempts_are_attributed_to_reviewers_not_the_writer(self):
+        with (
+            patch.object(main, "OPENROUTER_API_KEY", "test-openrouter-key"),
+            patch.object(main, "OPENAI_API_KEY", ""),
+            patch.object(main, "GEMINI_API_KEY", "test-gemini-key"),
+            patch.object(main, "GROQ_API_KEY", "test-groq-key"),
+            patch.object(main, "_provider_unavailable_reason", return_value=""),
+            patch.object(main, "_review_payload", return_value={}),
+            patch.object(
+                main,
+                "_run_one_editorial_review",
+                side_effect=lambda role, provider, *_args: (
+                    {"status": "passed"} if role == "fact" else {"score": 88}
+                ),
+            ),
+        ):
+            reviews = main._run_parallel_editorial_reviews({}, {}, "Gemini")
+
+        self.assertEqual(reviews["fact"]["provider"], "OpenRouter")
+        self.assertEqual(reviews["seo"]["provider"], "Groq")
+        self.assertEqual(
+            reviews["_attempts"],
+            [
+                {"role": "fact", "provider": "OpenRouter", "outcome": "success"},
+                {"role": "seo", "provider": "Groq", "outcome": "success"},
+            ],
+        )
+        self.assertNotIn("Groq", [reviews.get("writer_provider")])
+
     def test_fallback_tries_next_provider_after_one_provider_fails(self):
         def fail():
             raise RuntimeError("temporary provider outage")

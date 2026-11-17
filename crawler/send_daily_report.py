@@ -135,17 +135,67 @@ def _duration(value) -> str:
     return f"{secs} giây"
 
 
+def _review_provider_summary(report: dict) -> str:
+    role_stats = report.get("review_role_provider_stats")
+    if not isinstance(role_stats, dict):
+        return ""
+    role_labels = {"fact": "Kiểm chứng nguồn", "seo": "SEO"}
+    parts = []
+    for role in ("fact", "seo"):
+        providers = role_stats.get(role)
+        if not isinstance(providers, dict):
+            continue
+        details = []
+        for provider, counts in sorted(providers.items()):
+            if not isinstance(counts, dict):
+                continue
+            try:
+                success = max(0, int(counts.get("success", 0) or 0))
+                failed = max(0, int(counts.get("failed", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+            if not success and not failed:
+                continue
+            detail = f"{provider}: {success} thành công"
+            if failed:
+                detail += f", {failed} lỗi"
+            details.append(detail)
+        if details:
+            parts.append(f"{role_labels.get(role, role)} — " + "; ".join(details))
+    return " · ".join(parts)
+
+
 def _article_list(articles: list[dict]) -> str:
     rows = []
+    role_labels = {"fact": "Kiểm chứng nguồn", "seo": "SEO"}
     for item in articles[:10]:
         if not isinstance(item, dict):
             continue
         title = _esc(item.get("title") or "Bài viết mới")
         url = str(item.get("url") or "").strip()
-        provider = _esc(item.get("ai_provider") or "")
+        writer = _esc(
+            item.get("writer_provider")
+            or item.get("ai_writer_provider")
+            or item.get("ai_provider")
+            or ""
+        )
+        provider_lines = []
+        if writer:
+            provider_lines.append(f"AI viết bài: {writer}")
+        reviews = item.get("review_providers")
+        if isinstance(reviews, dict) and reviews:
+            review_text = " · ".join(
+                f"{role_labels.get(role, role)}: {_esc(provider)}"
+                for role, provider in reviews.items()
+                if role in role_labels and provider
+            )
+            if review_text:
+                provider_lines.append(f"AI kiểm duyệt (không viết bài): {review_text}")
         provider_label = (
-            f"<div style='color:#667085;font-size:11px'>AI viết bài: {provider}</div>"
-            if provider else ""
+            "<div style='color:#667085;font-size:11px'>"
+            + "<br>".join(provider_lines)
+            + "</div>"
+            if provider_lines else ""
         )
         if url.startswith(("https://", "http://")):
             rows.append(
@@ -243,6 +293,11 @@ def _build_html(
     review_required_count = int(report.get("review_required_count") or 0)
     failed_feeds = int(report.get("failed_feed_count") or 0)
     successful_feeds = int(report.get("successful_feed_count") or 0)
+    writer_provider = str(report.get("article_writer_provider") or "AI")
+    writer_attempt_count = int(report.get("article_writer_attempt_count") or 0)
+    writer_success_count = int(report.get("article_writer_success_count") or 0)
+    writer_failed_count = int(report.get("article_writer_failed_count") or 0)
+    review_summary = _review_provider_summary(report)
     label = _status_label(report, job_status, stage)
     palette = {
         "ĐANG CHẠY": ("#eff6ff", "#1d4ed8"),
@@ -313,8 +368,8 @@ def _build_html(
         f"<div style='font-size:25px;font-weight:700;color:#176b50'>{count}</div>"
         "<div style='font-size:11px;color:#667085'>Bài đã đăng</div></td>"
         f"<td style='width:25%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
-        f"<div style='font-size:25px;font-weight:700'>{minimum}</div>"
-        "<div style='font-size:11px;color:#667085'>Tối thiểu</div></td>"
+        f"<div style='font-size:25px;font-weight:700'>{writer_success_count}</div>"
+        f"<div style='font-size:11px;color:#667085'>{_esc(writer_provider)} viết xong</div></td>"
         f"<td style='width:25%;padding:12px 6px;background:#f8fafc;border-radius:8px'>"
         f"<div style='font-size:25px;font-weight:700'>{failures_count}</div>"
         "<div style='font-size:11px;color:#667085'>Bài lỗi</div></td>"
@@ -326,15 +381,19 @@ def _build_html(
 
     extra_stats = ""
     if stage == "final":
-        writer_provider = _esc(report.get("article_writer_provider") or "Không xác định")
         writer_mode = str(report.get("article_writer_mode") or "").strip().lower()
         writer_mode_label = (
-            "khóa writer, không chuyển sang nhà cung cấp khác"
-            if writer_mode == "strict" else "có thể dùng nhà cung cấp dự phòng"
+            "writer độc quyền; Gemini lỗi thì không dùng AI khác viết thay"
+            if writer_mode == "strict" and writer_provider.casefold() == "gemini"
+            else ("writer khóa cứng, không chuyển nhà cung cấp" if writer_mode == "strict" else "có thể dùng nhà cung cấp dự phòng")
         )
+        reviewer_label = _esc(review_summary or "Chưa ghi nhận lượt kiểm duyệt AI nào.")
         extra_stats = (
             f"<p style='margin:12px 0 0;color:#667085;font-size:12px'>"
-            f"AI viết bài: <strong>{writer_provider}</strong> ({writer_mode_label})"
+            f"AI viết bài: <strong>{_esc(writer_provider)}</strong> ({writer_mode_label})"
+            f"<br>Bản nháp AI tạo thành công: <strong>{writer_success_count}/{writer_attempt_count}</strong>"
+            f" · Lỗi writer: {writer_failed_count}"
+            f"<br>AI kiểm duyệt (không viết bài): {reviewer_label}"
             f"<br>RSS: {successful_feeds} feed đọc được · {failed_feeds} feed lỗi"
             f" &nbsp;|&nbsp; Mục tiêu: {minimum} tối thiểu / {preferred} mong muốn / {maximum} tối đa"
             f" &nbsp;|&nbsp; Thời gian: {_esc(_duration(report.get('duration_seconds')))}"
@@ -387,7 +446,10 @@ def _build_text(
         lines.extend([
             f"Đã xuất bản: {count} bài.",
             f"AI viết bài: {report.get('article_writer_provider', 'Không xác định')} "
-            + ("(khóa writer, không chuyển nhà cung cấp)." if report.get("article_writer_mode") == "strict" else ""),
+            + ("(writer độc quyền; không chuyển nhà cung cấp)." if report.get("article_writer_mode") == "strict" else ""),
+            f"Bản nháp AI tạo thành công: {report.get('article_writer_success_count', 0)}/{report.get('article_writer_attempt_count', 0)}.",
+            f"Lỗi writer: {report.get('article_writer_failed_count', 0)}.",
+            f"AI kiểm duyệt (không viết bài): {_review_provider_summary(report) or 'Chưa ghi nhận lượt kiểm duyệt.'}.",
             f"Bài lỗi: {report.get('failed_count', 0)}.",
             f"Bài chờ kiểm duyệt: {report.get('review_required_count', 0)}.",
             f"RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi.",
@@ -397,7 +459,19 @@ def _build_text(
         articles = report.get("articles") if isinstance(report.get("articles"), list) else []
         lines.extend(
             f"- {item.get('title') or 'Bài mới'}: {item.get('url') or ''}"
-            + (f" | AI viết: {item.get('ai_provider')}" if item.get("ai_provider") else "")
+            + (
+                f" | AI viết: {item.get('writer_provider') or item.get('ai_writer_provider') or item.get('ai_provider')}"
+                if (item.get('writer_provider') or item.get('ai_writer_provider') or item.get('ai_provider')) else ""
+            )
+            + (
+                " | AI kiểm duyệt (không viết bài): "
+                + ", ".join(
+                    f"{ {'fact': 'Kiểm chứng nguồn', 'seo': 'SEO'}.get(role, role) }={provider}"
+                    for role, provider in (item.get("review_providers") or {}).items()
+                    if role in {"fact", "seo"} and provider
+                )
+                if isinstance(item.get("review_providers"), dict) and item.get("review_providers") else ""
+            )
             for item in articles if isinstance(item, dict)
         )
         failures = report.get("failures") if isinstance(report.get("failures"), list) else []
@@ -485,6 +559,9 @@ def _write_summary(report: dict, job_status: str, run_url: str) -> None:
         f"## Báo cáo crawler Đi Đây Đó - {date}",
         f"- Kết luận: **{_status_label(report, job_status)}**",
         f"- Đã xuất bản: **{report.get('published_count', 0)} bài**",
+        f"- AI viết bài: **{report.get('article_writer_provider', 'Không xác định')}** (writer độc quyền: {report.get('article_writer_mode') == 'strict'})",
+        f"- Bản nháp AI tạo thành công: **{report.get('article_writer_success_count', 0)}/{report.get('article_writer_attempt_count', 0)}**; writer lỗi: **{report.get('article_writer_failed_count', 0)}**",
+        f"- AI kiểm duyệt (không viết bài): {_review_provider_summary(report) or 'Chưa ghi nhận lượt kiểm duyệt.'}",
         f"- Bài lỗi: **{report.get('failed_count', 0)}**",
         f"- RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi",
         f"- Thời gian: {_duration(report.get('duration_seconds'))}",

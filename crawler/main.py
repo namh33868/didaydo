@@ -2408,8 +2408,10 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
         jobs["seo"] = ("Groq", SEO_REVIEW_INSTRUCTIONS, _review_payload(article, draft, 2200, 5000))
 
     results = {}
+    review_attempts = []
     if not jobs:
         results["fact"] = {"status": "failed", "provider": None, "reason": "Không có reviewer độc lập khả dụng."}
+        results["_attempts"] = review_attempts
         return results
 
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
@@ -2422,6 +2424,7 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
             try:
                 results[role] = future.result()
                 results[role]["provider"] = provider
+                review_attempts.append({"role": role, "provider": provider, "outcome": "success"})
                 _clear_provider_cooldown(provider)
                 log.info("AI editorial role=%s provider=%s completed", role, provider)
             except Exception as exc:
@@ -2431,6 +2434,7 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
                     role, provider, type(exc).__name__, clean_text(str(exc))[:180],
                 )
                 results[role] = {"status": "failed", "provider": provider, "reason": clean_text(str(exc))[:180]}
+                review_attempts.append({"role": role, "provider": provider, "outcome": "failed"})
 
                 # A failed independent reviewer does not end the review chain while
                 # another configured provider can still audit the same source and draft.
@@ -2444,6 +2448,7 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
                             )
                             fallback_result["provider"] = fallback_provider
                             results["fact"] = fallback_result
+                            review_attempts.append({"role": "fact", "provider": fallback_provider, "outcome": "success"})
                             _clear_provider_cooldown(fallback_provider)
                             log.info(
                                 "AI editorial role=fact fallback_provider=%s completed",
@@ -2452,6 +2457,7 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
                             break
                         except Exception as fallback_exc:
                             _record_provider_failure(fallback_provider, fallback_exc)
+                            review_attempts.append({"role": "fact", "provider": fallback_provider, "outcome": "failed"})
                             log.warning(
                                 "AI editorial role=fact fallback_provider=%s failed (%s): %s",
                                 fallback_provider,
@@ -2460,6 +2466,7 @@ def _run_parallel_editorial_reviews(article, draft, writer_provider):
                             )
     if "fact" not in results:
         results["fact"] = {"status": "failed", "provider": None, "reason": "Không có fact reviewer độc lập."}
+    results["_attempts"] = review_attempts
     return results
 
 
@@ -3006,6 +3013,23 @@ def create_ai_draft(article):
     draft = _insert_inline_images(article, draft)
     editorial_reviews = _run_parallel_editorial_reviews(article, draft, writer_provider)
     draft = _apply_editorial_reviews(draft, editorial_reviews)
+    review_provider_map = {}
+    for review_role in ("fact", "seo"):
+        review_result = editorial_reviews.get(review_role)
+        if not isinstance(review_result, dict):
+            continue
+        review_provider = clean_text(review_result.get("provider", ""))
+        if not review_provider or review_result.get("status") == "failed":
+            continue
+        if review_role == "fact" and review_result.get("status") != "passed":
+            continue
+        if review_role == "seo" and not isinstance(review_result.get("score"), int):
+            continue
+        review_provider_map[review_role] = review_provider
+    draft["ai_writer_provider"] = writer_provider
+    draft["ai_writer_mode"] = "strict"
+    draft["ai_review_providers"] = review_provider_map
+    draft["ai_review_attempts"] = list(editorial_reviews.get("_attempts") or [])
     editorial_gate = _evaluate_editorial_publication_gate(article, editorial_reviews)
     draft["editorial_review_status"] = editorial_gate["status"]
     draft["editorial_review_reason"] = editorial_gate["reason"]
@@ -3679,6 +3703,11 @@ def main(argv=None):
     processed = 0
     published_count = 0
     review_required_count = 0
+    article_writer_attempt_count = 0
+    article_writer_success_count = 0
+    article_writer_failed_count = 0
+    review_provider_stats = {}
+    review_role_provider_stats = {}
     attempted = 0
     duplicates = 0
     irrelevant_skipped = 0
@@ -3778,8 +3807,27 @@ def main(argv=None):
             error_message = None
             if GEMINI_API_KEY or OPENAI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY:
                 try:
+                    article_writer_attempt_count += 1
                     draft = create_ai_draft(article)
                     if draft:
+                        article_writer_success_count += 1
+                        for review_attempt in draft.get("ai_review_attempts", []):
+                            if not isinstance(review_attempt, dict):
+                                continue
+                            review_provider = clean_text(review_attempt.get("provider", ""))
+                            review_role = clean_text(review_attempt.get("role", ""))
+                            if not review_provider or review_role not in {"fact", "seo"}:
+                                continue
+                            outcome = "failed" if review_attempt.get("outcome") == "failed" else "success"
+                            provider_stats = review_provider_stats.setdefault(
+                                review_provider, {"success": 0, "failed": 0}
+                            )
+                            provider_stats[outcome] += 1
+                            role_stats = review_role_provider_stats.setdefault(review_role, {})
+                            role_provider_stats = role_stats.setdefault(
+                                review_provider, {"success": 0, "failed": 0}
+                            )
+                            role_provider_stats[outcome] += 1
                         consecutive_ai_failures = 0
                         article.update(draft)
                         if draft.get("editorial_review_status") != "passed":
@@ -3791,7 +3839,8 @@ def main(argv=None):
                             if draft.get("ai_fallback_reason"):
                                 error_message = draft["ai_fallback_reason"]
                 except Exception as exc:
-                    error_message = f"AI providers failed: {type(exc).__name__}: {clean_text(str(exc))[:700]}"
+                    article_writer_failed_count += 1
+                    error_message = f"AI writer {AI_WRITER_PROVIDER} failed: {type(exc).__name__}: {clean_text(str(exc))[:700]}"
                     status = "ai_failed_metadata_only"
                     log.exception("AI provider lỗi; giữ artifact để có thể tiếp tục: %s", canonical_url)
                     consecutive_ai_failures += 1
@@ -3847,6 +3896,8 @@ def main(argv=None):
                             "title": published_title,
                             "url": published_url,
                             "ai_provider": clean_text(draft.get("ai_provider") or writer_provider),
+                            "writer_provider": clean_text(draft.get("ai_writer_provider") or writer_provider),
+                            "review_providers": draft.get("ai_review_providers") or {},
                         })
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
                 elif site_result and site_result.get("ok") and site_result.get("status") == "draft" and site_result.get("review_required"):
@@ -3919,6 +3970,7 @@ def main(argv=None):
         f"URL mới đã thử: {attempted}/{max_attempts}\n"
         f"Bài đã xử lý: {processed}\n"
         f"Bài mới đã xuất bản: {published_count}/{run_limit}\n"
+        f"Bản nháp AI tạo thành công: {article_writer_success_count}/{article_writer_attempt_count}; lỗi writer: {article_writer_failed_count}\n"
         f"Bài chờ kiểm duyệt thủ công: {review_required_count}\n"
         f"Bài trùng đã bỏ qua: {duplicates}\n"
         f"Bài ngoài danh mục đã bỏ qua: {irrelevant_skipped}\n"
@@ -3931,6 +3983,11 @@ def main(argv=None):
         "published_count": published_count,
         "article_writer_provider": AI_WRITER_PROVIDER,
         "article_writer_mode": "strict",
+        "article_writer_attempt_count": article_writer_attempt_count,
+        "article_writer_success_count": article_writer_success_count,
+        "article_writer_failed_count": article_writer_failed_count,
+        "review_provider_stats": review_provider_stats,
+        "review_role_provider_stats": review_role_provider_stats,
         "review_required_count": review_required_count,
         "failed": failed,
         "fatal_error": fatal_error,

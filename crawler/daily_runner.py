@@ -169,6 +169,8 @@ def main():
                 "title": published_title,
                 "url": published_url,
                 "ai_provider": str(row.get("ai_provider") or ""),
+                "writer_provider": str(row.get("ai_writer_provider") or row.get("ai_provider") or ""),
+                "review_providers": {},
             })
             log.info("Đã xuất bản lại bài đang chờ: %s", result.get("site_url"))
 
@@ -247,6 +249,11 @@ def main():
         "published_count": total_published,
         "article_writer_provider": crawler_result.get("article_writer_provider") or bot.AI_WRITER_PROVIDER,
         "article_writer_mode": crawler_result.get("article_writer_mode") or "strict",
+        "article_writer_attempt_count": int(crawler_result.get("article_writer_attempt_count", 0) or 0),
+        "article_writer_success_count": int(crawler_result.get("article_writer_success_count", 0) or 0),
+        "article_writer_failed_count": int(crawler_result.get("article_writer_failed_count", 0) or 0),
+        "review_provider_stats": crawler_result.get("review_provider_stats") or {},
+        "review_role_provider_stats": crawler_result.get("review_role_provider_stats") or {},
         "review_required_count": review_required_count,
         "failed_count": failed,
         "recovered_count": recovered_published,

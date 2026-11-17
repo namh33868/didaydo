@@ -76,10 +76,19 @@ class DailyReportEmailTests(unittest.TestCase):
             "maximum": 10,
             "article_writer_provider": "Gemini",
             "article_writer_mode": "strict",
+            "article_writer_attempt_count": 3,
+            "article_writer_success_count": 2,
+            "article_writer_failed_count": 1,
+            "review_role_provider_stats": {
+                "fact": {"OpenRouter": {"success": 1, "failed": 1}, "OpenAI": {"success": 1, "failed": 0}},
+                "seo": {"Groq": {"success": 2, "failed": 0}},
+            },
             "articles": [{
                 "title": "Bài du lịch",
                 "url": "https://example.test/post",
                 "ai_provider": "Gemini (viết bài từ source context)",
+                "writer_provider": "Gemini",
+                "review_providers": {"fact": "OpenRouter", "seo": "Groq"},
             }],
         }
         html_body = report._build_html(report_data, "success", "")
@@ -87,10 +96,18 @@ class DailyReportEmailTests(unittest.TestCase):
 
         self.assertIn("AI viết bài:", html_body)
         self.assertIn("Gemini", html_body)
-        self.assertIn("khóa writer", html_body)
+        self.assertIn("writer độc quyền", html_body)
         self.assertIn("AI viết bài: Gemini", text_body)
-        self.assertIn("khóa writer", text_body)
-        self.assertIn("AI viết: Gemini (viết bài từ source context)", text_body)
+        self.assertIn("writer độc quyền", text_body)
+        self.assertIn("AI viết: Gemini", text_body)
+        self.assertIn("Gemini viết xong", html_body)
+        self.assertIn("Bản nháp AI tạo thành công: <strong>2/3</strong>", html_body)
+        self.assertIn("Lỗi writer: 1", html_body)
+        self.assertIn("AI kiểm duyệt (không viết bài)", html_body)
+        self.assertIn("Kiểm chứng nguồn — OpenAI: 1 thành công", html_body)
+        self.assertIn("SEO — Groq: 2 thành công", html_body)
+        self.assertIn("AI kiểm duyệt (không viết bài):", text_body)
+        self.assertIn("Groq: 2 thành công", text_body)
 
     def test_report_command_sends_one_final_summary_only(self):
         with (

@@ -30,6 +30,14 @@ class DailyRunnerTests(unittest.TestCase):
                 "duplicate_skipped_count": 0,
                 "irrelevant_skipped_count": 0,
                 "duration_seconds": 1.0,
+                "article_writer_attempt_count": 2,
+                "article_writer_success_count": 1,
+                "article_writer_failed_count": 1,
+                "review_provider_stats": {"OpenRouter": {"success": 1, "failed": 0}, "Groq": {"success": 1, "failed": 0}},
+                "review_role_provider_stats": {
+                    "fact": {"OpenRouter": {"success": 1, "failed": 0}},
+                    "seo": {"Groq": {"success": 1, "failed": 0}},
+                },
                 "discovery": {
                     "enabled_sources": 1,
                     "successful_feeds": 1,
@@ -83,6 +91,11 @@ class DailyRunnerTests(unittest.TestCase):
             self.assertEqual(report["cover_recheck_failed"], 0)
             self.assertEqual(report["status"], "warning")
             self.assertEqual(report["failed_count"], 1)
+            self.assertEqual(report["article_writer_attempt_count"], 2)
+            self.assertEqual(report["article_writer_success_count"], 1)
+            self.assertEqual(report["article_writer_failed_count"], 1)
+            self.assertEqual(report["review_role_provider_stats"]["fact"]["OpenRouter"]["success"], 1)
+            self.assertEqual(report["review_role_provider_stats"]["seo"]["Groq"]["success"], 1)
             self.assertFalse(report["fatal_error"])
             recheck.assert_not_called()
 
