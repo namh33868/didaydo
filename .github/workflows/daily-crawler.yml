@@ -1,6 +1,19 @@
 name: Daily travel crawler
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "crawler/main.py"
+      - "crawler/daily_runner.py"
+      - "crawler/send_daily_report.py"
+      - "crawler/site_publisher.py"
+      - "crawler/image_finder.py"
+      - "crawler/image_optimizer.py"
+      - "crawler/sources.json"
+      - "crawler/taxonomy.json"
+      - "crawler/requirements.txt"
+      - ".github/workflows/daily-crawler.yml"
   schedule:
     # 10:15 Vietnam time (UTC+7) every day.
     - cron: "15 10 * * *"
