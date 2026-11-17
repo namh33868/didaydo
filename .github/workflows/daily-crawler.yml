@@ -1,10 +1,6 @@
 name: Daily travel crawler
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/crawler-run-trigger"
   schedule:
     # 10:15 Vietnam time (UTC+7) every day.
     - cron: "15 10 * * *"
