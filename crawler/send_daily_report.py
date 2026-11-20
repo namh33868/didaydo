@@ -165,6 +165,21 @@ def _review_provider_summary(report: dict) -> str:
     return " · ".join(parts)
 
 
+def _writer_model_summary(report: dict) -> str:
+    models = report.get("article_writer_model_stats")
+    if not isinstance(models, dict):
+        return ""
+    parts = []
+    for model, count in sorted(models.items()):
+        try:
+            count = max(0, int(count or 0))
+        except (TypeError, ValueError):
+            continue
+        if count:
+            parts.append(f"{model}: {count} bản")
+    return " · ".join(parts)
+
+
 def _article_list(articles: list[dict]) -> str:
     rows = []
     role_labels = {"fact": "Kiểm chứng nguồn", "seo": "SEO"}
@@ -179,9 +194,12 @@ def _article_list(articles: list[dict]) -> str:
             or item.get("ai_provider")
             or ""
         )
+        writer_model = _esc(item.get("writer_model") or "")
         provider_lines = []
         if writer:
-            provider_lines.append(f"AI viết bài: {writer}")
+            provider_lines.append(
+                f"AI viết bài: {writer}" + (f" · Model: {writer_model}" if writer_model else "")
+            )
         reviews = item.get("review_providers")
         if isinstance(reviews, dict) and reviews:
             review_text = " · ".join(
@@ -206,6 +224,36 @@ def _article_list(articles: list[dict]) -> str:
             rows.append(f"<li style='margin:0 0 8px'>{title}{provider_label}</li>")
     return "<ol style='padding-left:22px;margin:8px 0'>" + "".join(rows) + "</ol>" if rows else (
         "<p style='margin:8px 0;color:#667085'>Chưa có bài nào được xác nhận xuất bản.</p>"
+    )
+
+
+def _review_required_list(items: list[dict]) -> str:
+    rows = []
+    for item in (items or [])[:10]:
+        if not isinstance(item, dict):
+            continue
+        title = _esc(item.get("title") or "Bản nháp chưa rõ tiêu đề")
+        source = _esc(item.get("source") or "")
+        reason = _esc(_short_error(item.get("reason") or "Chưa đạt điều kiện kiểm chứng nguồn."))
+        writer = _esc(item.get("writer_provider") or "Gemini")
+        model = _esc(item.get("writer_model") or "")
+        metadata = f"<div style='color:#667085;font-size:11px'>AI viết: {writer}"
+        if model:
+            metadata += f" · Model: {model}"
+        if source:
+            metadata += f" · Nguồn: {source}"
+        metadata += "</div>"
+        rows.append(
+            "<li style='margin:0 0 10px'>"
+            f"<strong>{title}</strong>{metadata}"
+            f"<div style='color:#b54708;font-size:12px;margin-top:3px'>Lý do chờ duyệt: {reason}</div>"
+            "</li>"
+        )
+    if not rows:
+        return ""
+    return (
+        "<h2 style='font-size:15px;margin:22px 0 6px'>Bài đã tạo nhưng đang chờ duyệt trong Admin</h2>"
+        "<ol style='padding-left:22px;margin:8px 0'>" + "".join(rows) + "</ol>"
     )
 
 
@@ -297,6 +345,7 @@ def _build_html(
     writer_attempt_count = int(report.get("article_writer_attempt_count") or 0)
     writer_success_count = int(report.get("article_writer_success_count") or 0)
     writer_failed_count = int(report.get("article_writer_failed_count") or 0)
+    writer_model_summary = _esc(_writer_model_summary(report) or "Chưa có model nào tạo bản nháp thành công.")
     review_summary = _review_provider_summary(report)
     label = _status_label(report, job_status, stage)
     palette = {
@@ -341,6 +390,7 @@ def _build_html(
         details = (
             "<h2 style='font-size:15px;margin:22px 0 6px'>Bài đã xuất bản</h2>"
             + _article_list(articles)
+            + _review_required_list(report.get("review_required_articles") or [])
             + _failure_list(report)
         )
         if not articles and not report.get("failures") and report.get("fatal_error_reason"):
@@ -393,6 +443,7 @@ def _build_html(
             f"AI viết bài: <strong>{_esc(writer_provider)}</strong> ({writer_mode_label})"
             f"<br>Bản nháp AI tạo thành công: <strong>{writer_success_count}/{writer_attempt_count}</strong>"
             f" · Lỗi writer: {writer_failed_count}"
+            f"<br>Model Gemini thực tế: {writer_model_summary}"
             f"<br>AI kiểm duyệt (không viết bài): {reviewer_label}"
             f"<br>RSS: {successful_feeds} feed đọc được · {failed_feeds} feed lỗi"
             f" &nbsp;|&nbsp; Mục tiêu: {minimum} tối thiểu / {preferred} mong muốn / {maximum} tối đa"
@@ -449,6 +500,7 @@ def _build_text(
             + ("(writer độc quyền; không chuyển nhà cung cấp)." if report.get("article_writer_mode") == "strict" else ""),
             f"Bản nháp AI tạo thành công: {report.get('article_writer_success_count', 0)}/{report.get('article_writer_attempt_count', 0)}.",
             f"Lỗi writer: {report.get('article_writer_failed_count', 0)}.",
+            f"Model Gemini thực tế: {_writer_model_summary(report) or 'Chưa có model nào tạo bản nháp thành công.'}.",
             f"AI kiểm duyệt (không viết bài): {_review_provider_summary(report) or 'Chưa ghi nhận lượt kiểm duyệt.'}.",
             f"Bài lỗi: {report.get('failed_count', 0)}.",
             f"Bài chờ kiểm duyệt: {report.get('review_required_count', 0)}.",
@@ -463,6 +515,7 @@ def _build_text(
                 f" | AI viết: {item.get('writer_provider') or item.get('ai_writer_provider') or item.get('ai_provider')}"
                 if (item.get('writer_provider') or item.get('ai_writer_provider') or item.get('ai_provider')) else ""
             )
+            + (f" | Model: {item.get('writer_model')}" if item.get("writer_model") else "")
             + (
                 " | AI kiểm duyệt (không viết bài): "
                 + ", ".join(
@@ -474,6 +527,15 @@ def _build_text(
             )
             for item in articles if isinstance(item, dict)
         )
+        pending_drafts = report.get("review_required_articles") if isinstance(report.get("review_required_articles"), list) else []
+        if pending_drafts:
+            lines += ["", "BÀI ĐÃ TẠO NHƯNG ĐANG CHỜ DUYỆT TRONG ADMIN:"]
+            lines.extend(
+                f"- {item.get('title') or 'Bản nháp'} | AI viết: {item.get('writer_provider') or 'Gemini'}"
+                + (f" | Model: {item.get('writer_model')}" if item.get("writer_model") else "")
+                + f" | Lý do: {_short_error(item.get('reason'))}"
+                for item in pending_drafts[:10] if isinstance(item, dict)
+            )
         failures = report.get("failures") if isinstance(report.get("failures"), list) else []
         if failures:
             lines += ["", "LỖI CẦN CHÚ Ý:"]
@@ -561,6 +623,7 @@ def _write_summary(report: dict, job_status: str, run_url: str) -> None:
         f"- Đã xuất bản: **{report.get('published_count', 0)} bài**",
         f"- AI viết bài: **{report.get('article_writer_provider', 'Không xác định')}** (writer độc quyền: {report.get('article_writer_mode') == 'strict'})",
         f"- Bản nháp AI tạo thành công: **{report.get('article_writer_success_count', 0)}/{report.get('article_writer_attempt_count', 0)}**; writer lỗi: **{report.get('article_writer_failed_count', 0)}**",
+        f"- Model Gemini thực tế: {_writer_model_summary(report) or 'Chưa có model nào tạo bản nháp thành công.'}",
         f"- AI kiểm duyệt (không viết bài): {_review_provider_summary(report) or 'Chưa ghi nhận lượt kiểm duyệt.'}",
         f"- Bài lỗi: **{report.get('failed_count', 0)}**",
         f"- RSS: {report.get('successful_feed_count', 0)} feed đọc được / {report.get('failed_feed_count', 0)} feed lỗi",
@@ -571,6 +634,14 @@ def _write_summary(report: dict, job_status: str, run_url: str) -> None:
             title = str(item.get("title") or "Bài viết mới")
             url = str(item.get("url") or "")
             lines.append(f"- [{title}]({url})" if url.startswith(("https://", "http://")) else f"- {title}")
+    pending_drafts = report.get("review_required_articles") if isinstance(report.get("review_required_articles"), list) else []
+    if pending_drafts:
+        lines.append("### Bài đã tạo nhưng chờ duyệt trong Admin")
+        for item in pending_drafts[:10]:
+            if isinstance(item, dict):
+                lines.append(
+                    f"- **{item.get('title') or 'Bản nháp'}** — {_short_error(item.get('reason'))}"
+                )
     if run_url:
         lines.append(f"- [Mở workflow log]({run_url})")
     try:
