@@ -79,6 +79,17 @@ class DailyReportEmailTests(unittest.TestCase):
             "article_writer_attempt_count": 3,
             "article_writer_success_count": 2,
             "article_writer_failed_count": 1,
+            "article_writer_model_stats": {
+                "gemini-3.8-flash": 1,
+                "gemini-3.1-flash-lite": 1,
+            },
+            "review_required_articles": [{
+                "title": "Bài đang chờ biên tập",
+                "source": "VnTravel",
+                "reason": "Fact reviewer đánh giá rủi ro medium; có thông tin thay đổi theo thời gian.",
+                "writer_provider": "Gemini",
+                "writer_model": "gemini-3.1-flash-lite",
+            }],
             "review_role_provider_stats": {
                 "fact": {"OpenRouter": {"success": 1, "failed": 1}, "OpenAI": {"success": 1, "failed": 0}},
                 "seo": {"Groq": {"success": 2, "failed": 0}},
@@ -108,6 +119,14 @@ class DailyReportEmailTests(unittest.TestCase):
         self.assertIn("SEO — Groq: 2 thành công", html_body)
         self.assertIn("AI kiểm duyệt (không viết bài):", text_body)
         self.assertIn("Groq: 2 thành công", text_body)
+        self.assertIn("Model Gemini thực tế", html_body)
+        self.assertIn("gemini-3.1-flash-lite: 1 bản", html_body)
+        self.assertIn("Bài đã tạo nhưng đang chờ duyệt trong Admin", html_body)
+        self.assertIn("Bài đang chờ biên tập", html_body)
+        self.assertIn("Fact reviewer đánh giá rủi ro medium", html_body)
+        self.assertIn("Model Gemini thực tế:", text_body)
+        self.assertIn("BÀI ĐÃ TẠO NHƯNG ĐANG CHỜ DUYỆT TRONG ADMIN:", text_body)
+        self.assertIn("Bài đang chờ biên tập", text_body)
 
     def test_report_command_sends_one_final_summary_only(self):
         with (
