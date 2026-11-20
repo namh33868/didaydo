@@ -86,6 +86,28 @@ class DailyRunnerTests(unittest.TestCase):
                     return_value=backfill_result,
                 ),
                 patch.object(daily_runner.site_publisher, "list_pending_drafts", return_value=[]),
+                patch.object(
+                    daily_runner.site_publisher,
+                    "list_review_required_drafts",
+                    return_value=[{
+                        "source_url": "https://example.test/source",
+                        "site_url": "https://didaydo.example/bai-viet/ban-nhap",
+                    }],
+                ),
+                patch.object(
+                    daily_runner.sync_to_site,
+                    "_article_and_draft",
+                    return_value=(
+                        {"source_name": "Test source", "source_publisher": "Test source"},
+                        {
+                            "seo_title": "Bài cần duyệt",
+                            "seo_content": "<p>Nội dung</p>",
+                            "editorial_review_reason": "Rủi ro medium.",
+                            "ai_writer_provider": "Gemini",
+                            "ai_writer_model": "gemini-3.1-flash-lite",
+                        },
+                    ),
+                ),
                 patch.object(daily_runner.site_publisher, "recheck_published_cover_images") as recheck,
             ):
                 daily_runner.main()
@@ -103,7 +125,10 @@ class DailyRunnerTests(unittest.TestCase):
             self.assertEqual(report["article_writer_success_count"], 1)
             self.assertEqual(report["article_writer_failed_count"], 1)
             self.assertEqual(report["article_writer_model_stats"]["gemini-3.1-flash-lite"], 1)
+            self.assertEqual(report["review_required_count"], 1)
             self.assertEqual(report["review_required_articles"][0]["title"], "Bài cần duyệt")
+            self.assertEqual(report["review_required_articles"][0]["reason"], "Rủi ro medium.")
+            self.assertEqual(report["review_required_articles"][0]["writer_model"], "gemini-3.1-flash-lite")
             self.assertEqual(report["review_role_provider_stats"]["fact"]["OpenRouter"]["success"], 1)
             self.assertEqual(report["review_role_provider_stats"]["seo"]["Groq"]["success"], 1)
             self.assertFalse(report["fatal_error"])
