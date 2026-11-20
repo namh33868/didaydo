@@ -1308,7 +1308,7 @@ def list_review_required_drafts(db_path: str | None = None, limit: int = 20):
         rows = conn.execute("""
             SELECT a.*, t.destination_country, t.destination_city, t.primary_category,
                    t.categories_json AS topic_categories_json,
-                   s.site_url, s.last_synced_at AS review_held_at
+                   s.site_url, s.site_status, s.last_synced_at AS review_held_at
             FROM articles a
             JOIN website_sync s ON s.source_url=a.source_url
             LEFT JOIN article_taxonomy t ON t.source_url=a.source_url
