@@ -1299,6 +1299,28 @@ def get_sync_record(source_url: str, db_path: str | None = None):
         return dict(row) if row else None
 
 
+def list_review_required_drafts(db_path: str | None = None, limit: int = 20):
+    """List complete drafts still held for editorial review in the website Admin."""
+    target_db = db_path or DATABASE_PATH
+    ensure_table(target_db)
+    with sqlite3.connect(target_db, timeout=30) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT a.*, t.destination_country, t.destination_city, t.primary_category,
+                   t.categories_json AS topic_categories_json,
+                   s.site_url, s.site_status, s.last_synced_at AS review_held_at
+            FROM articles a
+            JOIN website_sync s ON s.source_url=a.source_url
+            LEFT JOIN article_taxonomy t ON t.source_url=a.source_url
+            WHERE s.site_status='draft_review'
+              AND COALESCE(a.seo_title,'')<>''
+              AND COALESCE(a.seo_content,'')<>''
+            ORDER BY COALESCE(s.last_checked_at, s.last_synced_at) DESC
+            LIMIT ?
+        """, (max(1, min(int(limit), 100)),)).fetchall()
+        return [dict(row) for row in rows]
+
+
 def list_pending_drafts(db_path: str | None = None, limit: int = 3):
     target_db = db_path or DATABASE_PATH
     ensure_table(target_db)

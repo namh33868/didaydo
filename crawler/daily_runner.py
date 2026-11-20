@@ -130,7 +130,9 @@ def main():
 
     recovered_published = 0
     review_required_count = 0
+    review_required_articles = []
     published_articles = []
+    recovered_writer_model_stats = {}
     pending_rows = site_publisher.list_pending_drafts(db_path, limit=maximum)
     for row in pending_rows:
         if recovered_published >= maximum:
@@ -160,7 +162,19 @@ def main():
             raise SystemExit(1)
         if result.get("status") == "draft" and result.get("review_required"):
             review_required_count += 1
-            log.warning("Bài vẫn nằm trong Admin draft, chờ biên tập viên duyệt: %s", result.get("site_url"))
+            review_required_articles.append({
+                "title": str(row.get("seo_title") or row.get("source_title") or "Bài viết chờ duyệt")[:180],
+                "url": str(result.get("site_url") or ""),
+                "source": str(row.get("source_name") or row.get("source_publisher") or "")[:120],
+                "reason": str(row.get("editorial_review_reason") or "Chưa đạt kiểm chứng nguồn.")[:900],
+                "writer_provider": str(row.get("ai_writer_provider") or row.get("ai_provider") or ""),
+                "writer_model": str(row.get("ai_writer_model") or ""),
+            })
+            log.warning(
+                "Bài vẫn nằm trong Admin draft, chờ biên tập viên duyệt: %s | Lý do: %s",
+                result.get("site_url"),
+                str(row.get("editorial_review_reason") or "Chưa đạt kiểm chứng nguồn.")[:400],
+            )
         elif result.get("status") == "published" and not result.get("skipped"):
             recovered_published += 1
             published_title = str(row.get("seo_title") or row.get("source_title") or "Bài viết mới")
@@ -170,8 +184,12 @@ def main():
                 "url": published_url,
                 "ai_provider": str(row.get("ai_provider") or ""),
                 "writer_provider": str(row.get("ai_writer_provider") or row.get("ai_provider") or ""),
+                "writer_model": str(row.get("ai_writer_model") or ""),
                 "review_providers": {},
             })
+            model_name = str(row.get("ai_writer_model") or "").strip()
+            if model_name:
+                recovered_writer_model_stats[model_name] = recovered_writer_model_stats.get(model_name, 0) + 1
             log.info("Đã xuất bản lại bài đang chờ: %s", result.get("site_url"))
 
     remaining = maximum - recovered_published
@@ -206,6 +224,31 @@ def main():
         bot.cleanup_published_artifacts()
         log.info("Đã đủ trần %s bài trong ngày; không crawl thêm.", maximum)
 
+    # The website sync table is the source of truth for drafts still awaiting
+    # editorial review. Reconcile first (above), then read the artifact bundle
+    # for the actual writer/model and precise hold reason; SQLite's legacy
+    # articles table intentionally stores only a subset of those fields.
+    review_required_articles = []
+    for row in site_publisher.list_review_required_drafts(db_path, limit=100):
+        pending_article, pending_draft = sync_to_site._article_and_draft(row)
+        if not _complete(pending_draft):
+            continue
+        review_required_articles.append({
+            "source_url": str(row.get("source_url") or ""),
+            "title": str(pending_draft.get("seo_title") or pending_article.get("source_title") or "Bài viết chờ duyệt")[:180],
+            "url": str(row.get("site_url") or ""),
+            "source": str(pending_article.get("source_name") or pending_article.get("source_publisher") or "")[:120],
+            "reason": str(pending_draft.get("editorial_review_reason") or "Chưa đạt kiểm chứng nguồn.")[:900],
+            "writer_provider": str(pending_draft.get("ai_writer_provider") or "Gemini"),
+            "writer_model": str(pending_draft.get("ai_writer_model") or ""),
+        })
+    review_required_count = len(review_required_articles)
+    if review_required_articles:
+        log.warning(
+            "Website hiện còn %s bài ở trạng thái draft_review trong Admin; đã đưa tên và lý do vào báo cáo.",
+            review_required_count,
+        )
+
     total_published = recovered_published + new_published
     _log_daily_tier(total_published)
 
@@ -239,6 +282,13 @@ def main():
     else:
         report_status = "completed"
 
+    combined_writer_model_stats = dict(recovered_writer_model_stats)
+    for model_name, count in (crawler_result.get("article_writer_model_stats") or {}).items():
+        try:
+            combined_writer_model_stats[model_name] = combined_writer_model_stats.get(model_name, 0) + max(0, int(count or 0))
+        except (TypeError, ValueError):
+            continue
+
     report = {
         "date": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d"),
         "generated_at": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat(),
@@ -252,6 +302,8 @@ def main():
         "article_writer_attempt_count": int(crawler_result.get("article_writer_attempt_count", 0) or 0),
         "article_writer_success_count": int(crawler_result.get("article_writer_success_count", 0) or 0),
         "article_writer_failed_count": int(crawler_result.get("article_writer_failed_count", 0) or 0),
+        "article_writer_model_stats": combined_writer_model_stats,
+        "review_required_articles": review_required_articles[:20],
         "review_provider_stats": crawler_result.get("review_provider_stats") or {},
         "review_role_provider_stats": crawler_result.get("review_role_provider_stats") or {},
         "review_required_count": review_required_count,

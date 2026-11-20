@@ -15,6 +15,7 @@ class AIResilienceTests(unittest.TestCase):
             "meta": dict(main._AI_PROVIDER_COOLDOWN_META),
             "counts": dict(main._AI_PROVIDER_FAILURE_COUNTS),
             "loaded": main._AI_PROVIDER_STATE_LOADED,
+            "last_gemini_model": main._LAST_GEMINI_MODEL_USED,
         }
         self.production_state_path = main._AI_PROVIDER_STATE_PATH
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -42,7 +43,68 @@ class AIResilienceTests(unittest.TestCase):
         main._AI_PROVIDER_FAILURE_COUNTS.clear()
         main._AI_PROVIDER_FAILURE_COUNTS.update(self.previous["counts"])
         main._AI_PROVIDER_STATE_LOADED = self.previous["loaded"]
+        with main._LAST_GEMINI_MODEL_USED_LOCK:
+            main._LAST_GEMINI_MODEL_USED = self.previous["last_gemini_model"]
         self.temp_dir.cleanup()
+
+    def test_gemini_transient_and_model_daily_quota_can_use_same_provider_fallback(self):
+        self.assertTrue(main._gemini_model_fallback_allowed(RuntimeError("503 UNAVAILABLE")))
+        self.assertTrue(main._gemini_model_fallback_allowed(RuntimeError("504 DEADLINE_EXCEEDED")))
+        self.assertTrue(main._gemini_model_fallback_allowed(RuntimeError(
+            "429 RESOURCE_EXHAUSTED: GenerateRequestsPerDayPerModel-FreeTier"
+        )))
+        self.assertFalse(main._gemini_model_fallback_allowed(RuntimeError(
+            "429 rate limit: tokens per minute exceeded"
+        )))
+        self.assertFalse(main._gemini_model_fallback_allowed(RuntimeError(
+            "401 UNAUTHENTICATED: API key invalid"
+        )))
+
+    def test_gemini_writer_retries_with_lite_model_without_changing_provider(self):
+        with (
+            patch.object(main, "GEMINI_MODEL", "gemini-3.8-flash"),
+            patch.object(main, "GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite"),
+            patch.object(main, "GEMINI_TIMEOUT_MS", 90000),
+            patch.object(main, "GEMINI_FALLBACK_TIMEOUT_MS", 120000),
+            patch.object(main, "GEMINI_RETRY_ATTEMPTS", 1),
+            patch.object(
+                main,
+                "_call_gemini_model",
+                side_effect=[
+                    RuntimeError("503 UNAVAILABLE: model overloaded"),
+                    '{"seo_title":"Bài thử","content_html":"<p>Nội dung thử</p>"}',
+                ],
+            ) as model_call,
+        ):
+            raw = main._call_gemini("instructions", {"source": "facts"}, max_output_tokens=4000)
+
+        self.assertIn("seo_title", raw)
+        self.assertEqual(
+            [call.args[0] for call in model_call.call_args_list],
+            ["gemini-3.8-flash", "gemini-3.1-flash-lite"],
+        )
+        self.assertEqual(model_call.call_args_list[0].args[4:], (90000, 1))
+        self.assertEqual(model_call.call_args_list[1].args[4:], (120000, 1))
+        self.assertEqual(main._LAST_GEMINI_MODEL_USED, "gemini-3.1-flash-lite")
+
+    def test_reviewer_payload_includes_source_dates_and_temporal_prompt(self):
+        payload = main._review_payload(
+            {
+                "source_title": "Thông báo du lịch",
+                "source_summary": "Sự kiện diễn ra theo thời hạn công bố.",
+                "source_url": "https://example.test/source",
+                "published_at": "2026-11-19",
+                "source_modified_at": "2026-11-19",
+                "source_body": "Thông tin nguồn " * 40,
+            },
+            {"seo_content": "<p>Bài viết</p>"},
+            8000,
+            7000,
+        )
+        self.assertEqual(payload["source_published_at"], "2026-11-19")
+        self.assertEqual(payload["source_updated_at"], "2026-11-19")
+        self.assertIn("KHÔNG đánh dấu", main.FACT_REVIEW_INSTRUCTIONS)
+        self.assertIn("mốc ngày", main.FACT_REVIEW_INSTRUCTIONS)
 
     def test_source_reference_is_bounded_and_preserves_both_ends(self):
         source = "INTRO " + ("A" * 180) + " MIDDLE " + ("B" * 180) + " ENDING"

@@ -150,6 +150,14 @@ class SitePublisherSyncStateTests(unittest.TestCase):
                     (source_url, "A travel story", "<p>Editorial content.</p>", "editorial_review_required"),
                 )
             self.assertEqual(site_publisher.list_pending_drafts(db_path), [])
+            held_rows = site_publisher.list_review_required_drafts(db_path)
+            self.assertEqual(len(held_rows), 1)
+            self.assertEqual(held_rows[0]["source_url"], source_url)
+            self.assertEqual(held_rows[0]["site_status"], "draft_review")
+            self.assertEqual(
+                held_rows[0]["site_url"],
+                "https://didaydo.example/bai-viet/review-hold",
+            )
 
     def test_review_hold_fails_closed_when_website_api_does_not_support_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:

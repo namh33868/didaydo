@@ -75,6 +75,15 @@ DRAFT_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "drafts")
 # assist with independent fact/SEO reviews; they never replace Gemini as author.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
+# Same-provider fallback: Gemini 3.1 Flash-Lite is used only when the preferred
+# Gemini model is overloaded, times out, or hits a model-specific daily quota.
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite").strip()
+try:
+    GEMINI_FALLBACK_TIMEOUT_MS = max(15000, min(int(os.getenv("GEMINI_FALLBACK_TIMEOUT_MS", "120000")), 180000))
+except ValueError:
+    GEMINI_FALLBACK_TIMEOUT_MS = 120000
+_LAST_GEMINI_MODEL_USED = ""
+_LAST_GEMINI_MODEL_USED_LOCK = RLock()
 # Timeout tối đa cho từng lần gọi provider. Mặc định 300 giây (5 phút).
 # Lưu ý: bài có nhiều stage AI thì tổng thời gian có thể lớn hơn 300 giây.
 try:
@@ -190,8 +199,9 @@ if _MISPLACED_GROQ_KEY:
         "OPENAI_API_KEY có tiền tố gsk_; đây là định dạng key Groq. Đã tự chuyển key này sang provider Groq cho phiên chạy hiện tại; hãy chuyển key sang GROQ_API_KEY trong .env. Không có key nào được in ra log."
     )
 log.info(
-    "AI config loaded: writer_preference=%s | Gemini model=%s | Gemini timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | Groq context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
-    AI_WRITER_PROVIDER, GEMINI_MODEL, GEMINI_TIMEOUT_MS / 1000.0,
+    "AI config loaded: writer_preference=%s | Gemini model=%s | same-provider fallback=%s | Gemini timeout=%.0fs | fallback timeout=%.0fs | provider timeout=%ss | Gemini attempts=%s | max output tokens=%s | Groq output tokens=%s | source context cap=%s chars | Groq context cap=%s chars | stop after %s consecutive AI failures | Groq configured=%s | source image embedding authorized=%s | source context mode=%s | enabled RSS sources=%s",
+    AI_WRITER_PROVIDER, GEMINI_MODEL, GEMINI_FALLBACK_MODEL or "(disabled)",
+    GEMINI_TIMEOUT_MS / 1000.0, GEMINI_FALLBACK_TIMEOUT_MS / 1000.0,
     AI_PROVIDER_TIMEOUT_SECONDS, GEMINI_RETRY_ATTEMPTS, AI_MAX_OUTPUT_TOKENS, GROQ_MAX_OUTPUT_TOKENS,
     MAX_SOURCE_BODY_CHARS, GROQ_MAX_SOURCE_CONTEXT_CHARS, AI_MAX_CONSECUTIVE_FAILURES, bool(GROQ_API_KEY),
     SOURCE_IMAGE_REUSE_AUTHORIZED, SOURCE_CONTEXT_MODE,
@@ -2131,15 +2141,37 @@ def _parse_and_validate_ai_draft(raw, provider):
     }
 
 
-def _call_gemini(instructions, input_data, max_output_tokens=None):
+def _gemini_model_fallback_allowed(exc):
+    """Use a second Gemini model only for transient/model-specific capacity failures."""
+    message = clean_text(str(exc)).casefold()
+    transient = (
+        "503", "504", "unavailable", "deadline_exceeded", "deadline expired",
+        "timed out", "timeout", "readtimeout", "temporarily overloaded",
+        "high demand", "connection reset",
+    )
+    if any(marker in message for marker in transient):
+        return True
+
+    # A daily requests quota is model-scoped in Google's error payload. Do not
+    # retry a project-wide billing/spend-cap failure with another model.
+    model_daily_quota = (
+        "generaterequestsperdaypermodel",
+        "generate_content_free_tier_requests",
+        "generate content requests per day limit exceeded",
+    )
+    return (
+        ("429" in message or "resource_exhausted" in message or "quota" in message)
+        and any(marker in message for marker in model_daily_quota)
+    )
+
+
+def _call_gemini_model(model, instructions, input_data, max_output_tokens, timeout_ms, retries):
     from google import genai
     from google.genai import types
 
-    # Explicit timeout + bounded retry policy prevents the SDK's default
-    # exponential backoff from holding the pipeline for minutes before fallback.
     http_options = types.HttpOptions(
-        timeout=GEMINI_TIMEOUT_MS,
-        retry_options=types.HttpRetryOptions(attempts=GEMINI_RETRY_ATTEMPTS),
+        timeout=timeout_ms,
+        retry_options=types.HttpRetryOptions(attempts=retries),
     )
     client = genai.Client(api_key=GEMINI_API_KEY, http_options=http_options)
     prompt = instructions + "\n\nDỮ LIỆU ĐẦU VÀO:\n" + json.dumps(input_data, ensure_ascii=False)
@@ -2148,21 +2180,54 @@ def _call_gemini(instructions, input_data, max_output_tokens=None):
         "temperature": 0.3,
         "max_output_tokens": max_output_tokens or AI_MAX_OUTPUT_TOKENS,
         "thinking_config": types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
-        # This workflow does not define tools; disable AFC explicitly rather than
-        # initializing its automatic-call machinery for normal text generation.
         "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
     }
     log.info(
         "Gemini request config model=%s thinking=%s timeout=%.0fs retries=%s",
-        GEMINI_MODEL, GEMINI_THINKING_LEVEL,
-        GEMINI_TIMEOUT_MS / 1000.0, GEMINI_RETRY_ATTEMPTS,
+        model, GEMINI_THINKING_LEVEL, timeout_ms / 1000.0, retries,
     )
     response = client.models.generate_content(
-        model=GEMINI_MODEL,
+        model=model,
         contents=prompt,
         config=types.GenerateContentConfig(**config_args),
     )
     return response.text or ""
+
+
+def _call_gemini(instructions, input_data, max_output_tokens=None):
+    global _LAST_GEMINI_MODEL_USED
+    candidates = [(GEMINI_MODEL, GEMINI_TIMEOUT_MS, GEMINI_RETRY_ATTEMPTS)]
+    if GEMINI_FALLBACK_MODEL and GEMINI_FALLBACK_MODEL != GEMINI_MODEL:
+        candidates.append((GEMINI_FALLBACK_MODEL, GEMINI_FALLBACK_TIMEOUT_MS, 1))
+
+    errors = []
+    with _LAST_GEMINI_MODEL_USED_LOCK:
+        _LAST_GEMINI_MODEL_USED = ""
+
+    for index, (model, timeout_ms, retries) in enumerate(candidates):
+        try:
+            raw = _call_gemini_model(
+                model, instructions, input_data, max_output_tokens, timeout_ms, retries
+            )
+            with _LAST_GEMINI_MODEL_USED_LOCK:
+                _LAST_GEMINI_MODEL_USED = model
+            if index:
+                log.warning(
+                    "Gemini same-provider fallback succeeded: preferred_model=%s fallback_model=%s",
+                    GEMINI_MODEL, model,
+                )
+            return raw
+        except Exception as exc:
+            errors.append(f"{model}: {type(exc).__name__}: {clean_text(str(exc))[:240]}")
+            if index + 1 >= len(candidates) or not _gemini_model_fallback_allowed(exc):
+                raise
+            next_model = candidates[index + 1][0]
+            log.warning(
+                "Gemini model=%s unavailable (%s); retrying with Gemini model=%s (same provider, no Groq/OpenAI fallback)",
+                model, type(exc).__name__, next_model,
+            )
+
+    raise RuntimeError("Tất cả model Gemini đã thử đều thất bại: " + " | ".join(errors))
 
 
 def _call_openai(instructions, input_data, max_tokens=None):
@@ -2297,8 +2362,10 @@ Bạn là biên tập viên kiểm tra độ trung thực của bài du lịch.
 Chỉ đối chiếu bản nháp với phần nội dung nguồn được cung cấp; KHÔNG tuyên bố đã xác minh độc lập trên Internet.
 Kiểm tra từng dữ kiện cụ thể: tên địa điểm, địa chỉ, khoảng cách, giá, giờ mở cửa, lịch hoạt động, quy định, vé, phương tiện và số liệu.
 Chỉ đánh dấu unsupported_claims khi bản nháp khẳng định điều mà nguồn không hỗ trợ; chỉ đánh dấu contradictions khi nguồn nói ngược lại.
-Đưa các dữ kiện có thể thay đổi theo thời gian vào time_sensitive_claims. Nếu nguồn quá ngắn/thiếu nội dung để đối chiếu, phải đặt risk_level="high" và giải thích trong notes.
-Chỉ được đặt risk_level="low" khi phần nguồn đủ để kiểm tra và không phát hiện dữ kiện thiếu căn cứ, mâu thuẫn hoặc cần cập nhật.
+Phân biệt thông tin lịch sử/tin đã được công bố theo một ngày cụ thể với khẳng định về tình trạng hiện tại. KHÔNG đánh dấu một thông báo, sự kiện đã diễn ra, hoặc quyết định được nguồn công bố vào ngày xác định là time-sensitive chỉ vì nội dung đó là tin mới. Chỉ đánh dấu time_sensitive_claims khi bài viết khẳng định thông tin có thể đã thay đổi tại thời điểm xuất bản (ví dụ giá/giờ mở cửa hiện tại, hiệu lực chính sách đang diễn ra, vé còn bán, lịch sắp tới, điều kiện nhập cảnh hoặc an toàn hiện thời) mà nguồn không đủ để xác nhận.
+Nếu bản nháp trình bày một thông báo theo mốc ngày hoặc thời hạn mà nguồn nêu rõ, hãy đánh giá theo mốc đó; không tự giả định nó vẫn còn hiệu lực hiện tại. Nếu bài viết nói như thể thông tin vẫn đang áp dụng nhưng nguồn không xác nhận hiệu lực hiện tại, phải ghi vào time_sensitive_claims.
+Nếu nguồn quá ngắn/thiếu nội dung để đối chiếu, phải đặt risk_level="high" và giải thích trong notes.
+Chỉ được đặt risk_level="low" khi phần nguồn đủ để kiểm tra, các khẳng định được gắn đúng mốc thời gian, và không phát hiện dữ kiện thiếu căn cứ, mâu thuẫn hoặc cần cập nhật.
 Không suy diễn từ tiêu đề/ảnh thành dữ kiện. Không tự thêm dữ kiện. Trả về DUY NHẤT JSON:
 {
   "risk_level": "low|medium|high",
@@ -2322,6 +2389,9 @@ def _review_payload(article, draft, max_source_chars, max_draft_chars):
         "source_title": clean_text(article.get("source_title", ""))[:500],
         "source_summary": clean_text(article.get("source_summary", ""))[:1200],
         "source_url": clean_text(article.get("source_url", ""))[:1000],
+        "source_published_at": clean_text(article.get("published_at", ""))[:80],
+        "source_updated_at": clean_text(article.get("source_modified_at", ""))[:80],
+        "source_name": clean_text(article.get("source_name") or article.get("source_publisher") or "")[:160],
         "source_body_available": bool(source_text and len(source_text.strip()) >= 300),
         "source_reference_excerpt": _prepare_source_reference_text(source_text, max_source_chars) if source_text else "",
         "draft_title": clean_text(draft.get("seo_title", ""))[:200],
@@ -3027,6 +3097,10 @@ def create_ai_draft(article):
             continue
         review_provider_map[review_role] = review_provider
     draft["ai_writer_provider"] = writer_provider
+    draft["ai_writer_model"] = (
+        _LAST_GEMINI_MODEL_USED
+        if writer_provider == "Gemini" else ""
+    )
     draft["ai_writer_mode"] = "strict"
     draft["ai_review_providers"] = review_provider_map
     draft["ai_review_attempts"] = list(editorial_reviews.get("_attempts") or [])
@@ -3703,6 +3777,8 @@ def main(argv=None):
     processed = 0
     published_count = 0
     review_required_count = 0
+    review_required_articles = []
+    article_writer_model_stats = {}
     article_writer_attempt_count = 0
     article_writer_success_count = 0
     article_writer_failed_count = 0
@@ -3811,6 +3887,11 @@ def main(argv=None):
                     draft = create_ai_draft(article)
                     if draft:
                         article_writer_success_count += 1
+                        actual_writer_model = clean_text(draft.get("ai_writer_model") or "")
+                        if actual_writer_model:
+                            article_writer_model_stats[actual_writer_model] = (
+                                article_writer_model_stats.get(actual_writer_model, 0) + 1
+                            )
                         for review_attempt in draft.get("ai_review_attempts", []):
                             if not isinstance(review_attempt, dict):
                                 continue
@@ -3897,13 +3978,23 @@ def main(argv=None):
                             "url": published_url,
                             "ai_provider": clean_text(draft.get("ai_provider") or writer_provider),
                             "writer_provider": clean_text(draft.get("ai_writer_provider") or writer_provider),
+                            "writer_model": clean_text(draft.get("ai_writer_model") or ""),
                             "review_providers": draft.get("ai_review_providers") or {},
                         })
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
                 elif site_result and site_result.get("ok") and site_result.get("status") == "draft" and site_result.get("review_required"):
+                    review_required_articles.append({
+                        "title": clean_text(draft.get("seo_title") or article.get("source_title"))[:180],
+                        "url": clean_text(site_result.get("site_url") or ""),
+                        "source": clean_text(article.get("source_name") or article.get("source_publisher") or "")[:120],
+                        "reason": clean_text(draft.get("editorial_review_reason") or "Chưa đạt kiểm chứng nguồn.")[:900],
+                        "writer_provider": clean_text(draft.get("ai_writer_provider") or writer_provider),
+                        "writer_model": clean_text(draft.get("ai_writer_model") or ""),
+                    })
                     log.warning(
-                        "Bài đã được lưu trong Admin ở trạng thái draft để kiểm duyệt dữ kiện: %s",
+                        "Bài đã được lưu trong Admin ở trạng thái draft để kiểm duyệt dữ kiện: %s | Lý do: %s",
                         site_result.get("site_url"),
+                        clean_text(draft.get("editorial_review_reason") or "Chưa đạt kiểm chứng nguồn.")[:500],
                     )
                 elif site_result and site_result.get("ok") and site_result.get("skipped"):
                     log.info("Bỏ qua bài website đã xử lý: status=%s slug=%s", site_result.get("status"), site_result.get("slug"))
@@ -3986,6 +4077,8 @@ def main(argv=None):
         "article_writer_attempt_count": article_writer_attempt_count,
         "article_writer_success_count": article_writer_success_count,
         "article_writer_failed_count": article_writer_failed_count,
+        "article_writer_model_stats": article_writer_model_stats,
+        "review_required_articles": review_required_articles,
         "review_provider_stats": review_provider_stats,
         "review_role_provider_stats": review_role_provider_stats,
         "review_required_count": review_required_count,
