@@ -258,6 +258,13 @@ def main():
     else:
         report_status = "completed"
 
+    combined_writer_model_stats = dict(recovered_writer_model_stats)
+    for model_name, count in (crawler_result.get("article_writer_model_stats") or {}).items():
+        try:
+            combined_writer_model_stats[model_name] = combined_writer_model_stats.get(model_name, 0) + max(0, int(count or 0))
+        except (TypeError, ValueError):
+            continue
+
     report = {
         "date": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d"),
         "generated_at": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat(),
@@ -271,10 +278,7 @@ def main():
         "article_writer_attempt_count": int(crawler_result.get("article_writer_attempt_count", 0) or 0),
         "article_writer_success_count": int(crawler_result.get("article_writer_success_count", 0) or 0),
         "article_writer_failed_count": int(crawler_result.get("article_writer_failed_count", 0) or 0),
-        "article_writer_model_stats": {
-            **recovered_writer_model_stats,
-            **(crawler_result.get("article_writer_model_stats") or {}),
-        },
+        "article_writer_model_stats": combined_writer_model_stats,
         "review_required_articles": review_required_articles[:20],
         "review_provider_stats": crawler_result.get("review_provider_stats") or {},
         "review_role_provider_stats": crawler_result.get("review_role_provider_stats") or {},
