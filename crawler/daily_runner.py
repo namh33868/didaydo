@@ -219,11 +219,35 @@ def main():
         fatal_error = bool(crawler_result.get("fatal_error", False))
         fatal_error_reason = str(crawler_result.get("fatal_error_reason") or "")
         published_articles.extend(crawler_result.get("published_articles") or [])
-        review_required_articles.extend(crawler_result.get("review_required_articles") or [])
     else:
         bot._reconcile_site_publications()
         bot.cleanup_published_artifacts()
         log.info("Đã đủ trần %s bài trong ngày; không crawl thêm.", maximum)
+
+    # The website sync table is the source of truth for drafts still awaiting
+    # editorial review. Reconcile first (above), then read the artifact bundle
+    # for the actual writer/model and precise hold reason; SQLite's legacy
+    # articles table intentionally stores only a subset of those fields.
+    review_required_articles = []
+    for row in site_publisher.list_review_required_drafts(db_path, limit=100):
+        pending_article, pending_draft = sync_to_site._article_and_draft(row)
+        if not _complete(pending_draft):
+            continue
+        review_required_articles.append({
+            "source_url": str(row.get("source_url") or ""),
+            "title": str(pending_draft.get("seo_title") or pending_article.get("source_title") or "Bài viết chờ duyệt")[:180],
+            "url": str(row.get("site_url") or ""),
+            "source": str(pending_article.get("source_name") or pending_article.get("source_publisher") or "")[:120],
+            "reason": str(pending_draft.get("editorial_review_reason") or "Chưa đạt kiểm chứng nguồn.")[:900],
+            "writer_provider": str(pending_draft.get("ai_writer_provider") or "Gemini"),
+            "writer_model": str(pending_draft.get("ai_writer_model") or ""),
+        })
+    review_required_count = len(review_required_articles)
+    if review_required_articles:
+        log.warning(
+            "Website hiện còn %s bài ở trạng thái draft_review trong Admin; đã đưa tên và lý do vào báo cáo.",
+            review_required_count,
+        )
 
     total_published = recovered_published + new_published
     _log_daily_tier(total_published)
