@@ -33,6 +33,14 @@ class DailyRunnerTests(unittest.TestCase):
                 "article_writer_attempt_count": 2,
                 "article_writer_success_count": 1,
                 "article_writer_failed_count": 1,
+                "article_writer_model_stats": {"gemini-3.1-flash-lite": 1},
+                "review_required_articles": [{
+                    "title": "Bài cần duyệt",
+                    "url": "https://didaydo.example/bai-viet/ban-nhap",
+                    "reason": "Rủi ro medium.",
+                    "writer_provider": "Gemini",
+                    "writer_model": "gemini-3.1-flash-lite",
+                }],
                 "review_provider_stats": {"OpenRouter": {"success": 1, "failed": 0}, "Groq": {"success": 1, "failed": 0}},
                 "review_role_provider_stats": {
                     "fact": {"OpenRouter": {"success": 1, "failed": 0}},
@@ -94,6 +102,8 @@ class DailyRunnerTests(unittest.TestCase):
             self.assertEqual(report["article_writer_attempt_count"], 2)
             self.assertEqual(report["article_writer_success_count"], 1)
             self.assertEqual(report["article_writer_failed_count"], 1)
+            self.assertEqual(report["article_writer_model_stats"]["gemini-3.1-flash-lite"], 1)
+            self.assertEqual(report["review_required_articles"][0]["title"], "Bài cần duyệt")
             self.assertEqual(report["review_role_provider_stats"]["fact"]["OpenRouter"]["success"], 1)
             self.assertEqual(report["review_role_provider_stats"]["seo"]["Groq"]["success"], 1)
             self.assertFalse(report["fatal_error"])
