@@ -74,14 +74,14 @@ DRAFT_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "drafts")
 # Gemini is the exclusive article writer. Other configured providers may only
 # assist with independent fact/SEO reviews; they never replace Gemini as author.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
-# Same-provider fallback: Gemini 3.1 Flash-Lite is used only when the preferred
-# Gemini model is overloaded, times out, or hits a model-specific daily quota.
-GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
+# Gemini 3.1 Flash-Lite is the high-volume primary writer. Gemini 3.8 Flash is
+# a same-provider quality/capacity fallback; neither Groq nor OpenAI writes articles.
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.8-flash").strip()
 try:
-    GEMINI_FALLBACK_TIMEOUT_MS = max(15000, min(int(os.getenv("GEMINI_FALLBACK_TIMEOUT_MS", "120000")), 180000))
+    GEMINI_FALLBACK_TIMEOUT_MS = max(15000, min(int(os.getenv("GEMINI_FALLBACK_TIMEOUT_MS", "180000")), 180000))
 except ValueError:
-    GEMINI_FALLBACK_TIMEOUT_MS = 120000
+    GEMINI_FALLBACK_TIMEOUT_MS = 180000
 _LAST_GEMINI_MODEL_USED = ""
 _LAST_GEMINI_MODEL_USED_LOCK = RLock()
 # Timeout tối đa cho từng lần gọi provider. Mặc định 300 giây (5 phút).
@@ -91,20 +91,32 @@ try:
 except ValueError:
     AI_PROVIDER_TIMEOUT_SECONDS = 300
 
-# Gemini: dùng thinking thấp và timeout tối đa 300 giây. Biến GEMINI_TIMEOUT_MS
-# là mili giây; ưu tiên biến này nếu người dùng đã đặt rõ trong .env.
+# Gemini: dùng thinking thấp để giảm độ trễ/token suy luận cho bài viết.
 GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low").strip().lower()
 if GEMINI_THINKING_LEVEL not in {"low", "medium", "high"}:
     GEMINI_THINKING_LEVEL = "low"
 try:
-    _gemini_timeout_default = str(AI_PROVIDER_TIMEOUT_SECONDS * 1000)
-    GEMINI_TIMEOUT_MS = max(15000, min(int(os.getenv("GEMINI_TIMEOUT_MS", _gemini_timeout_default)), 300000))
+    GEMINI_TIMEOUT_MS = max(15000, min(int(os.getenv("GEMINI_TIMEOUT_MS", "120000")), 300000))
 except ValueError:
-    GEMINI_TIMEOUT_MS = AI_PROVIDER_TIMEOUT_SECONDS * 1000
+    GEMINI_TIMEOUT_MS = 120000
+# HttpRetryOptions.attempts is the total number of attempts, including the first.
 try:
     GEMINI_RETRY_ATTEMPTS = max(1, min(int(os.getenv("GEMINI_RETRY_ATTEMPTS", "2")), 3))
 except ValueError:
     GEMINI_RETRY_ATTEMPTS = 2
+try:
+    GEMINI_RETRY_INITIAL_DELAY_SECONDS = max(
+        0.5, min(float(os.getenv("GEMINI_RETRY_INITIAL_DELAY_SECONDS", "2")), 30.0)
+    )
+except ValueError:
+    GEMINI_RETRY_INITIAL_DELAY_SECONDS = 2.0
+try:
+    GEMINI_RETRY_MAX_DELAY_SECONDS = max(
+        GEMINI_RETRY_INITIAL_DELAY_SECONDS,
+        min(float(os.getenv("GEMINI_RETRY_MAX_DELAY_SECONDS", "20")), 60.0),
+    )
+except ValueError:
+    GEMINI_RETRY_MAX_DELAY_SECONDS = max(20.0, GEMINI_RETRY_INITIAL_DELAY_SECONDS)
 
 # Give full-capacity providers enough room to return a complete editorial article.
 # Groq on-demand is separately bounded to fit its request-level TPM ceiling.
@@ -2165,13 +2177,28 @@ def _gemini_model_fallback_allowed(exc):
     )
 
 
-def _call_gemini_model(model, instructions, input_data, max_output_tokens, timeout_ms, retries):
+def _build_gemini_http_retry_options(types, attempts):
+    """Retry transient server/network errors with jitter; never spin on quota 429s."""
+    bounded_attempts = max(1, min(int(attempts), 3))
+    return types.HttpRetryOptions(
+        attempts=bounded_attempts,
+        initial_delay=GEMINI_RETRY_INITIAL_DELAY_SECONDS,
+        max_delay=GEMINI_RETRY_MAX_DELAY_SECONDS,
+        exp_base=2.0,
+        jitter=1.0,
+        # 429 often means a hard quota/rate limit. Let quota classification run
+        # immediately so we can switch model (or stop) without repeated calls.
+        http_status_codes=[408, 500, 502, 503, 504],
+    )
+
+
+def _call_gemini_model(model, instructions, input_data, max_output_tokens, timeout_ms, attempts):
     from google import genai
     from google.genai import types
 
     http_options = types.HttpOptions(
         timeout=timeout_ms,
-        retry_options=types.HttpRetryOptions(attempts=retries),
+        retry_options=_build_gemini_http_retry_options(types, attempts),
     )
     client = genai.Client(api_key=GEMINI_API_KEY, http_options=http_options)
     prompt = instructions + "\n\nDỮ LIỆU ĐẦU VÀO:\n" + json.dumps(input_data, ensure_ascii=False)
@@ -2183,14 +2210,24 @@ def _call_gemini_model(model, instructions, input_data, max_output_tokens, timeo
         "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
     }
     log.info(
-        "Gemini request config model=%s thinking=%s timeout=%.0fs retries=%s",
-        model, GEMINI_THINKING_LEVEL, timeout_ms / 1000.0, retries,
+        "Gemini request config model=%s thinking=%s timeout=%.0fs attempts=%s retry_statuses=408,500,502,503,504",
+        model, GEMINI_THINKING_LEVEL, timeout_ms / 1000.0, attempts,
     )
     response = client.models.generate_content(
         model=model,
         contents=prompt,
         config=types.GenerateContentConfig(**config_args),
     )
+    usage = getattr(response, "usage_metadata", None)
+    if usage is not None:
+        log.info(
+            "Gemini usage model=%s prompt_tokens=%s candidates_tokens=%s thoughts_tokens=%s total_tokens=%s",
+            model,
+            getattr(usage, "prompt_token_count", None),
+            getattr(usage, "candidates_token_count", None),
+            getattr(usage, "thoughts_token_count", None),
+            getattr(usage, "total_token_count", None),
+        )
     return response.text or ""
 
 
@@ -2198,16 +2235,16 @@ def _call_gemini(instructions, input_data, max_output_tokens=None):
     global _LAST_GEMINI_MODEL_USED
     candidates = [(GEMINI_MODEL, GEMINI_TIMEOUT_MS, GEMINI_RETRY_ATTEMPTS)]
     if GEMINI_FALLBACK_MODEL and GEMINI_FALLBACK_MODEL != GEMINI_MODEL:
-        candidates.append((GEMINI_FALLBACK_MODEL, GEMINI_FALLBACK_TIMEOUT_MS, 1))
+        candidates.append((GEMINI_FALLBACK_MODEL, GEMINI_FALLBACK_TIMEOUT_MS, GEMINI_RETRY_ATTEMPTS))
 
     errors = []
     with _LAST_GEMINI_MODEL_USED_LOCK:
         _LAST_GEMINI_MODEL_USED = ""
 
-    for index, (model, timeout_ms, retries) in enumerate(candidates):
+    for index, (model, timeout_ms, attempts) in enumerate(candidates):
         try:
             raw = _call_gemini_model(
-                model, instructions, input_data, max_output_tokens, timeout_ms, retries
+                model, instructions, input_data, max_output_tokens, timeout_ms, attempts
             )
             with _LAST_GEMINI_MODEL_USED_LOCK:
                 _LAST_GEMINI_MODEL_USED = model
