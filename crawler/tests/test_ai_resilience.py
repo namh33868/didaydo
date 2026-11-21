@@ -62,11 +62,11 @@ class AIResilienceTests(unittest.TestCase):
 
     def test_gemini_writer_retries_with_lite_model_without_changing_provider(self):
         with (
-            patch.object(main, "GEMINI_MODEL", "gemini-3.8-flash"),
-            patch.object(main, "GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite"),
-            patch.object(main, "GEMINI_TIMEOUT_MS", 90000),
-            patch.object(main, "GEMINI_FALLBACK_TIMEOUT_MS", 120000),
-            patch.object(main, "GEMINI_RETRY_ATTEMPTS", 1),
+            patch.object(main, "GEMINI_MODEL", "gemini-3.1-flash-lite"),
+            patch.object(main, "GEMINI_FALLBACK_MODEL", "gemini-3.8-flash"),
+            patch.object(main, "GEMINI_TIMEOUT_MS", 120000),
+            patch.object(main, "GEMINI_FALLBACK_TIMEOUT_MS", 180000),
+            patch.object(main, "GEMINI_RETRY_ATTEMPTS", 2),
             patch.object(
                 main,
                 "_call_gemini_model",
@@ -81,11 +81,31 @@ class AIResilienceTests(unittest.TestCase):
         self.assertIn("seo_title", raw)
         self.assertEqual(
             [call.args[0] for call in model_call.call_args_list],
-            ["gemini-3.8-flash", "gemini-3.1-flash-lite"],
+            ["gemini-3.1-flash-lite", "gemini-3.8-flash"],
         )
-        self.assertEqual(model_call.call_args_list[0].args[4:], (90000, 1))
-        self.assertEqual(model_call.call_args_list[1].args[4:], (120000, 1))
-        self.assertEqual(main._LAST_GEMINI_MODEL_USED, "gemini-3.1-flash-lite")
+        self.assertEqual(model_call.call_args_list[0].args[4:], (120000, 2))
+        self.assertEqual(model_call.call_args_list[1].args[4:], (180000, 2))
+        self.assertEqual(main._LAST_GEMINI_MODEL_USED, "gemini-3.8-flash")
+
+    def test_gemini_retry_options_use_backoff_and_do_not_retry_quota_429(self):
+        class RetryOptionsCapture:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+        fake_types = type("FakeTypes", (), {"HttpRetryOptions": RetryOptionsCapture})
+        with (
+            patch.object(main, "GEMINI_RETRY_INITIAL_DELAY_SECONDS", 2.0),
+            patch.object(main, "GEMINI_RETRY_MAX_DELAY_SECONDS", 20.0),
+        ):
+            options = main._build_gemini_http_retry_options(fake_types, 2)
+
+        self.assertEqual(options.kwargs["attempts"], 2)
+        self.assertEqual(options.kwargs["initial_delay"], 2.0)
+        self.assertEqual(options.kwargs["max_delay"], 20.0)
+        self.assertEqual(options.kwargs["exp_base"], 2.0)
+        self.assertEqual(options.kwargs["jitter"], 1.0)
+        self.assertEqual(options.kwargs["http_status_codes"], [408, 500, 502, 503, 504])
+        self.assertNotIn(429, options.kwargs["http_status_codes"])
 
     def test_reviewer_payload_includes_source_dates_and_temporal_prompt(self):
         payload = main._review_payload(
