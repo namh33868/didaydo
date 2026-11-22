@@ -176,13 +176,12 @@ def main():
                 draft,
                 bot.DATABASE_PATH,
                 force=args.force,
-                hold_for_review=(draft.get("editorial_review_status") != "passed"),
             )
             if result.get("skipped"):
                 print(f"Đã đồng bộ trước đó — bỏ qua: {source_url} ({result.get('status')})")
                 skipped += 1
             elif result.get("ok"):
-                print(f"Đã gửi bản nháp lên website: {result.get('status')} | {result.get('slug')} | {result.get('site_url')}")
+                print(f"Đã đồng bộ bài lên website: {result.get('status')} | {result.get('slug')} | {result.get('site_url')}")
                 ok += 1
         except Exception as exc:
             print(f"LỖI đồng bộ {source_url}: {type(exc).__name__}: {str(exc)[:400]}")

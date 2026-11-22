@@ -248,22 +248,22 @@ class EditorialPublicationGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["fact_review_provider"], "OpenRouter")
 
-    def test_missing_or_failed_reviewer_holds_article(self):
+    def test_missing_or_failed_reviewer_only_adds_warning(self):
         for reviews in ({}, {"fact": {"status": "failed", "reason": "reviewer timeout"}}):
             with self.subTest(reviews=reviews):
                 result = main._evaluate_editorial_publication_gate(self.article, reviews)
-                self.assertEqual(result["status"], "required")
+                self.assertEqual(result["status"], "warning")
                 self.assertIn("kiểm chứng độc lập", result["reason"])
 
-    def test_short_or_missing_source_body_holds_article_even_when_reviewer_says_low(self):
+    def test_short_or_missing_source_body_only_adds_warning(self):
         for source_body in ("", "Nguồn quá ngắn."):
             with self.subTest(source_body=source_body):
                 article = {"source_body": source_body}
                 result = main._evaluate_editorial_publication_gate(article, self.low_risk_review)
-                self.assertEqual(result["status"], "required")
+                self.assertEqual(result["status"], "warning")
                 self.assertIn("thân bài nguồn", result["reason"])
 
-    def test_medium_or_high_risk_and_any_claim_flags_require_human_review(self):
+    def test_medium_or_high_risk_and_claim_flags_only_add_warnings(self):
         variants = (
             {"risk_level": "medium"},
             {"risk_level": "high"},
@@ -277,7 +277,7 @@ class EditorialPublicationGateTests(unittest.TestCase):
                 fact.update(changes)
                 reviews = {"fact": fact}
                 result = main._evaluate_editorial_publication_gate(self.article, reviews)
-                self.assertEqual(result["status"], "required")
+                self.assertEqual(result["status"], "warning")
 
 
 class HtmlSourceTests(unittest.TestCase):

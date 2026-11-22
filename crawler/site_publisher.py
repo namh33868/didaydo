@@ -33,7 +33,6 @@ if not os.path.isabs(DATABASE_PATH):
     DATABASE_PATH = str(PROJECT_DIR / DATABASE_PATH)
 
 _HEALTH_CHECKED = False
-_REVIEW_HOLD_SUPPORTED = False
 
 
 def now_iso() -> str:
@@ -220,7 +219,7 @@ def _headers() -> dict[str, str]:
 
 
 def _check_api_ready() -> None:
-    global _HEALTH_CHECKED, _REVIEW_HOLD_SUPPORTED
+    global _HEALTH_CHECKED
     if _HEALTH_CHECKED:
         return
     if not SITE_URL or not SITE_URL.startswith(("http://", "https://")):
@@ -248,7 +247,6 @@ def _check_api_ready() -> None:
             "Website API chưa xác nhận chế độ tự xuất bản. Hãy cập nhật route.ts, "
             "đặt INGEST_AUTO_PUBLISH=true trên Vercel và redeploy trước khi chạy crawler."
         )
-    _REVIEW_HOLD_SUPPORTED = data.get("reviewHoldSupported") is True
     _HEALTH_CHECKED = True
 
 
@@ -569,6 +567,14 @@ def _ensure_source_article_images(
     source_url = normalize_source_url(article.get("source_url", ""))
     source_images_allowed, blocked_source_domains = _source_image_policy(article)
     article["allow_source_images"] = source_images_allowed
+    image_warnings = article.setdefault("image_warnings", [])
+    if not isinstance(image_warnings, list):
+        image_warnings = []
+        article["image_warnings"] = image_warnings
+    if not source_images_allowed:
+        warning = "Ảnh gốc từ nguồn này bị loại theo chính sách ảnh; hệ thống sẽ dùng ảnh thay thế phù hợp nếu tìm được."
+        if warning not in image_warnings:
+            image_warnings.append(warning)
 
     # Use the normal image accessor only when source photos are allowed. For blocked
     # sources, read metadata directly so legacy cache URLs can be stripped without
@@ -752,6 +758,9 @@ def _ensure_source_article_images(
         exclude_domains=blocked_source_domains,
     )
     if not isinstance(external, dict):
+        warning = "Không tìm được ảnh đại diện phù hợp; bài chưa thể đăng vì website yêu cầu ảnh bìa."
+        if warning not in image_warnings:
+            image_warnings.append(warning)
         log.warning("Bài nguồn không có ảnh và không tìm được ảnh ngoài phù hợp: %s", source_url)
         return None
 
@@ -774,6 +783,10 @@ def _ensure_source_article_images(
     external["cover_role"] = "external_fallback_cover"
     external["asset_storage"] = "external_source"
     external["processed_format"] = "original"
+    if not clean(external.get("license")):
+        warning = "Ảnh đại diện ngoài chưa có metadata giấy phép rõ ràng; cần kiểm tra quyền sử dụng."
+        if warning not in image_warnings:
+            image_warnings.append(warning)
     article["editorial_cover_image"] = external
     article["source_image_url"] = external_url
     article["image_credit"] = clean(external.get("creator") or external.get("credit") or external["source_name"])
@@ -1095,9 +1108,8 @@ def sync_draft_to_site(
     draft: dict,
     db_path: str | None = None,
     force: bool = False,
-    hold_for_review: bool = False,
 ) -> dict:
-    """Publish a passed article or store a held article as an Admin draft."""
+    """Publish every complete AI-written article; editorial risks are warnings, not holds."""
     if not SITE_SYNC_ENABLED:
         return {"ok": True, "skipped": True, "reason": "SITE_SYNC_ENABLED=false"}
     if not SITE_URL or not SITE_INGEST_API_KEY:
@@ -1114,10 +1126,6 @@ def sync_draft_to_site(
     if existing and existing["site_status"] == "published":
         return {"ok": True, "skipped": True, "status": "published", "slug": existing["site_slug"], "site_url": existing["site_url"]}
     _check_api_ready()
-    if hold_for_review and not _REVIEW_HOLD_SUPPORTED:
-        message = "Website chưa xác nhận hỗ trợ holdForReview; không gửi bài để tránh tự xuất bản nhầm."
-        _record_sync(target_db, source_url, status="failed", error=message)
-        raise RuntimeError(message)
     # Preflight by source URL handles the case where POST succeeded remotely but the
     # client lost the response. Never overwrite a live/published post by retrying.
     try:
@@ -1140,27 +1148,14 @@ def sync_draft_to_site(
         if remote_status == "archived":
             _record_sync(target_db, source_url, post_id=remote_id, slug=remote_slug, status="archived", site_url=remote_url)
             return {"ok": True, "skipped": True, "status": "archived", "slug": remote_slug, "site_url": remote_url}
-        if remote_status == "draft" and (
-            hold_for_review or (existing and existing["site_status"] == "draft_review")
-        ):
-            _record_sync(
-                target_db, source_url, post_id=remote_id, slug=remote_slug,
-                status="draft_review", site_url=remote_url,
-            )
-            return {
-                "ok": True, "skipped": True, "review_required": True,
-                "status": "draft", "slug": remote_slug, "site_url": remote_url,
-            }
-        # Ordinary technical retries can promote a previous draft. Review drafts
-        # are kept out of this path until an editor acts in Admin.
+        # Any existing draft (including a legacy review-held draft) can be promoted
+        # on retry under the new direct-publication policy.
 
     try:
         selected_cover = _ensure_source_article_images(article, target_db, draft=draft)
         if not selected_cover:
             raise RuntimeError("Bài nguồn không có ảnh hợp lệ và cũng không tìm được ảnh ngoài phù hợp; bài được giữ lại.")
         payload = build_site_payload(article, draft)
-        if hold_for_review:
-            payload["holdForReview"] = True
     except Exception as exc:
         _record_sync(target_db, source_url, status="failed", error=f"Cover image: {type(exc).__name__}: {clean(exc)[:700]}")
         raise
@@ -1186,22 +1181,6 @@ def sync_draft_to_site(
     post_id = result.get("id")
     slug = clean(result.get("slug"))
     post_url = f"{SITE_URL}/bai-viet/{slug}" if slug else None
-    if status == "draft" and hold_for_review:
-        _record_sync(
-            target_db, source_url, post_id=post_id, slug=slug,
-            status="draft_review", site_url=post_url,
-        )
-        return {
-            "ok": True,
-            "created": result.get("action") == "created",
-            "action": result.get("action"),
-            "status": "draft",
-            "review_required": True,
-            "id": post_id,
-            "slug": slug,
-            "site_url": post_url,
-        }
-
     _record_sync(target_db, source_url, post_id=post_id, slug=slug, status=status, site_url=post_url)
 
     if status != "published":
