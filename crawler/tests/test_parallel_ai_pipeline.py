@@ -260,7 +260,7 @@ class EditorialPublicationGateTests(unittest.TestCase):
             with self.subTest(source_body=source_body):
                 article = {"source_body": source_body}
                 result = main._evaluate_editorial_publication_gate(article, self.low_risk_review)
-                self.assertEqual(result["status"], "required")
+                self.assertEqual(result["status"], "warning")
                 self.assertIn("thân bài nguồn", result["reason"])
 
     def test_medium_or_high_risk_and_claim_flags_only_add_warnings(self):
@@ -277,7 +277,7 @@ class EditorialPublicationGateTests(unittest.TestCase):
                 fact.update(changes)
                 reviews = {"fact": fact}
                 result = main._evaluate_editorial_publication_gate(self.article, reviews)
-                self.assertEqual(result["status"], "required")
+                self.assertEqual(result["status"], "warning")
 
 
 class HtmlSourceTests(unittest.TestCase):
