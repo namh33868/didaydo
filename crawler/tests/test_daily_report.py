@@ -34,6 +34,7 @@ class DailyReportEmailTests(unittest.TestCase):
                 "published_count": 2,
                 "failed_count": 1,
                 "review_required_count": 3,
+                "editorial_warning_count": 1,
                 "minimum": 3,
                 "preferred": 5,
                 "maximum": 10,
@@ -50,14 +51,14 @@ class DailyReportEmailTests(unittest.TestCase):
             "https://github.com/example/repo/actions/runs/1",
         )
         self.assertIn("Bài đã xuất bản", html_body)
-        self.assertIn("Chờ duyệt", html_body)
+        self.assertIn("Có cảnh báo", html_body)
         self.assertIn("Lỗi cần chú ý", html_body)
         text_body = report._build_text(
             {"date": "2026-11-10", "published_count": 2, "failed_count": 1, "review_required_count": 3},
             "success",
             "",
         )
-        self.assertIn("Bài chờ kiểm duyệt: 3.", text_body)
+        self.assertIn("Bản nháp cũ còn chờ duyệt trong Admin: 3.", text_body)
         self.assertIn("text-overflow:ellipsis", html_body)
         self.assertNotIn(long_reason, html_body)
         self.assertIn("...", html_body)
@@ -71,6 +72,7 @@ class DailyReportEmailTests(unittest.TestCase):
             "published_count": 1,
             "failed_count": 1,
             "review_required_count": 0,
+            "editorial_warning_count": 1,
             "minimum": 3,
             "preferred": 10,
             "maximum": 10,
@@ -100,6 +102,10 @@ class DailyReportEmailTests(unittest.TestCase):
                 "ai_provider": "Gemini (viết bài từ source context)",
                 "writer_provider": "Gemini",
                 "review_providers": {"fact": "OpenRouter", "seo": "Groq"},
+                "editorial_warnings": [
+                    "Không có fact reviewer độc lập.",
+                    "Ảnh đại diện chưa có metadata giấy phép rõ ràng.",
+                ],
             }],
         }
         html_body = report._build_html(report_data, "success", "")
@@ -112,7 +118,7 @@ class DailyReportEmailTests(unittest.TestCase):
         self.assertIn("writer độc quyền", text_body)
         self.assertIn("AI viết: Gemini", text_body)
         self.assertIn("Gemini viết xong", html_body)
-        self.assertIn("Bản nháp AI tạo thành công: <strong>2/3</strong>", html_body)
+        self.assertIn("AI viết xong: <strong>2/3</strong>", html_body)
         self.assertIn("Lỗi writer: 1", html_body)
         self.assertIn("AI kiểm duyệt (không viết bài)", html_body)
         self.assertIn("Kiểm chứng nguồn — OpenAI: 1 thành công", html_body)
@@ -121,12 +127,17 @@ class DailyReportEmailTests(unittest.TestCase):
         self.assertIn("Groq: 2 thành công", text_body)
         self.assertIn("Model Gemini thực tế", html_body)
         self.assertIn("gemini-3.1-flash-lite: 1 bản", html_body)
-        self.assertIn("Bài đã tạo nhưng đang chờ duyệt trong Admin", html_body)
+        self.assertIn("Bản nháp cũ còn chờ duyệt trong Admin", html_body)
         self.assertIn("Bài đang chờ biên tập", html_body)
         self.assertIn("Fact reviewer đánh giá rủi ro medium", html_body)
         self.assertIn("Model Gemini thực tế:", text_body)
-        self.assertIn("BÀI ĐÃ TẠO NHƯNG ĐANG CHỜ DUYỆT TRONG ADMIN:", text_body)
+        self.assertIn("BẢN NHÁP CŨ CÒN CHỜ DUYỆT TRONG ADMIN:", text_body)
         self.assertIn("Bài đang chờ biên tập", text_body)
+        self.assertIn("Có cảnh báo", html_body)
+        self.assertIn("Cảnh báo nội dung/ảnh", html_body)
+        self.assertIn("Không có fact reviewer độc lập", html_body)
+        self.assertIn("Bài đã đăng có cảnh báo nội dung/ảnh: 1.", text_body)
+        self.assertIn("Cảnh báo: Không có fact reviewer độc lập", text_body)
 
     def test_report_command_sends_one_final_summary_only(self):
         with (
