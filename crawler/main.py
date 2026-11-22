@@ -231,7 +231,6 @@ def _sync_draft_to_site_if_enabled(article, draft):
             article,
             draft,
             DATABASE_PATH,
-            hold_for_review=(draft.get("editorial_review_status") != "passed"),
         )
     except Exception as exc:
         # Website integration must not lose the local artifact when publication fails.
@@ -2621,7 +2620,7 @@ def _apply_editorial_reviews(draft, reviews):
 
 
 def _evaluate_editorial_publication_gate(article, reviews):
-    """Fail closed: only source-backed, low-risk drafts may auto-publish."""
+    """Collect content-verification warnings without blocking publication."""
     reasons = []
     source_body = str(article.get("source_body") or "").strip()
     if SOURCE_CONTEXT_MODE != "smart" or len(source_body) < 300:
@@ -2646,7 +2645,7 @@ def _evaluate_editorial_publication_gate(article, reviews):
             reasons.append("Có thông tin thay đổi theo thời gian cần biên tập viên cập nhật.")
 
     return {
-        "status": "passed" if not reasons else "required",
+        "status": "passed" if not reasons else "warning",
         "reason": " ".join(reasons)[:1400],
         "fact_review_provider": clean_text(fact.get("provider", "")) if isinstance(fact, dict) else "",
         "risk_level": clean_text(fact.get("risk_level", "")) if isinstance(fact, dict) else "",
@@ -3147,13 +3146,15 @@ def create_ai_draft(article):
     draft["editorial_review_provider"] = editorial_gate["fact_review_provider"]
     draft["editorial_review_risk"] = editorial_gate["risk_level"]
     if editorial_gate["status"] != "passed":
+        draft["editorial_warning_reason"] = editorial_gate["reason"]
         existing_note = clean_text(draft.get("fact_check_notes", ""))
         draft["fact_check_notes"] = (
-            existing_note + " Chưa tự xuất bản: " + editorial_gate["reason"]
+            existing_note + " Cảnh báo biên tập (bài vẫn được gửi đăng): " + editorial_gate["reason"]
         ).strip()[:1800]
-        log.warning("Editorial publication gate=HOLD: %s", editorial_gate["reason"])
+        log.warning("Editorial publication warning; publishing continues: %s", editorial_gate["reason"])
     else:
-        log.info("Editorial publication gate=PASS: source-backed low-risk review completed.")
+        draft["editorial_warning_reason"] = ""
+        log.info("Editorial checks passed; no content warning was raised.")
     _validate_vietnamese_output(draft.get("seo_title", ""), draft.get("seo_description", ""), draft.get("seo_content", ""))
     seo_quality_score, seo_quality_checks = _evaluate_seo_quality(draft)
     reviewer_score = (editorial_reviews.get("seo") or {}).get("score") if isinstance(editorial_reviews.get("seo"), dict) else None
@@ -3803,7 +3804,7 @@ def main(argv=None):
         attempt_multiplier = 5
     max_attempts = min(50, run_limit * attempt_multiplier)
     log.info(
-        "Mục tiêu xuất bản %s bài mới; cho phép thử tối đa %s URL mới để bù bài lỗi AI/không hợp lệ.",
+        "Giới hạn tối đa %s bài AI tạo thành công trong lượt này; cho phép thử tối đa %s URL mới để bù URL trùng/không hợp lệ hoặc lỗi writer.",
         run_limit, max_attempts,
     )
     init_db()
@@ -3815,6 +3816,8 @@ def main(argv=None):
     published_count = 0
     review_required_count = 0
     review_required_articles = []
+    editorial_warning_count = 0
+    editorial_warning_articles = []
     article_writer_model_stats = {}
     article_writer_attempt_count = 0
     article_writer_success_count = 0
@@ -3836,10 +3839,11 @@ def main(argv=None):
     if not candidates:
         log.warning("Không tìm thấy ứng viên từ các RSS nguồn đang bật. Kiểm tra sources.json, kết nối mạng và feed_url; không quay lại VnExpress.")
 
-    # --limit là mục tiêu số bài xuất bản, không phải số URL cần thử. Duplicates đã
-    # biết được bỏ qua; URL mới được tính vào max_attempts kể cả khi AI lỗi.
+    # --limit caps successful AI-generated articles (published plus any technical
+    # publish failures), not just public posts. This prevents warning/cover failures
+    # from producing an unbounded pile of local drafts.
     for item in candidates:
-        if published_count >= run_limit or attempted >= max_attempts:
+        if published_count >= run_limit or article_writer_success_count >= run_limit or attempted >= max_attempts:
             break
 
         discovered_url = normalize_url(item.get("source_url", ""))
@@ -3948,10 +3952,17 @@ def main(argv=None):
                             role_provider_stats[outcome] += 1
                         consecutive_ai_failures = 0
                         article.update(draft)
-                        if draft.get("editorial_review_status") != "passed":
-                            status = "editorial_review_required"
-                            review_required_count += 1
-                            error_message = clean_text(draft.get("editorial_review_reason") or "Bài chờ biên tập viên kiểm tra dữ kiện.")[:1000]
+                        if draft.get("editorial_review_status") == "warning":
+                            status = "drafted_with_warnings"
+                            error_message = clean_text(
+                                draft.get("editorial_warning_reason")
+                                or draft.get("editorial_review_reason")
+                                or "Có cảnh báo cần lưu ý về nội dung."
+                            )[:1000]
+                            log.warning(
+                                "Bài vẫn được gửi xuất bản; cảnh báo biên tập: %s",
+                                error_message[:500],
+                            )
                         else:
                             status = "drafted_fallback" if draft.get("ai_fallback_reason") else "drafted"
                             if draft.get("ai_fallback_reason"):
@@ -3987,8 +3998,8 @@ def main(argv=None):
                 output_paths = save_output_bundle(
                     article, draft,
                     stage=(
-                        "editorial_review_required"
-                        if draft and draft.get("editorial_review_status") != "passed"
+                        "draft_ready_with_warnings"
+                        if draft and draft.get("editorial_review_status") == "warning"
                         else ("draft_ready" if draft else "ai_failed_or_metadata_only")
                     ),
                     error=error_message,
@@ -4010,6 +4021,18 @@ def main(argv=None):
                         published_count += 1
                         published_title = clean_text(draft.get("seo_title") or article.get("source_title"))
                         published_url = site_result.get("site_url") or ""
+                        article_warnings = []
+                        editorial_reason = clean_text(
+                            draft.get("editorial_warning_reason")
+                            or (draft.get("editorial_review_reason") if draft.get("editorial_review_status") == "warning" else "")
+                        )
+                        if editorial_reason:
+                            article_warnings.append("Nội dung: " + editorial_reason)
+                        image_warnings = article.get("image_warnings")
+                        if isinstance(image_warnings, list):
+                            article_warnings.extend(
+                                clean_text(item) for item in image_warnings if clean_text(item)
+                            )
                         published_articles.append({
                             "title": published_title,
                             "url": published_url,
@@ -4017,7 +4040,22 @@ def main(argv=None):
                             "writer_provider": clean_text(draft.get("ai_writer_provider") or writer_provider),
                             "writer_model": clean_text(draft.get("ai_writer_model") or ""),
                             "review_providers": draft.get("ai_review_providers") or {},
+                            "editorial_warnings": article_warnings,
                         })
+                        if article_warnings:
+                            editorial_warning_count += 1
+                            editorial_warning_articles.append({
+                                "title": published_title[:180],
+                                "url": published_url,
+                                "source": clean_text(article.get("source_name") or article.get("source_publisher") or "")[:120],
+                                "reason": " ".join(article_warnings)[:1400],
+                                "writer_provider": clean_text(draft.get("ai_writer_provider") or writer_provider),
+                                "writer_model": clean_text(draft.get("ai_writer_model") or ""),
+                            })
+                            log.warning(
+                                "Bài đã xuất bản kèm %s cảnh báo nội dung/ảnh: %s",
+                                len(article_warnings), published_url,
+                            )
                     log.info("ĐÃ XUẤT BẢN lên website: slug=%s url=%s", site_result.get("slug"), site_result.get("site_url"))
                 elif site_result and site_result.get("ok") and site_result.get("status") == "draft" and site_result.get("review_required"):
                     review_required_articles.append({
@@ -4099,7 +4137,8 @@ def main(argv=None):
         f"Bài đã xử lý: {processed}\n"
         f"Bài mới đã xuất bản: {published_count}/{run_limit}\n"
         f"Bản nháp AI tạo thành công: {article_writer_success_count}/{article_writer_attempt_count}; lỗi writer: {article_writer_failed_count}\n"
-        f"Bài chờ kiểm duyệt thủ công: {review_required_count}\n"
+        f"Bài đã đăng có cảnh báo biên tập/ảnh: {editorial_warning_count}\n"
+        f"Bài chờ duyệt thủ công (tồn cũ): {review_required_count}\n"
         f"Bài trùng đã bỏ qua: {duplicates}\n"
         f"Bài ngoài danh mục đã bỏ qua: {irrelevant_skipped}\n"
         f"Bài lỗi/chưa xuất bản: {failed}\n"
@@ -4116,6 +4155,8 @@ def main(argv=None):
         "article_writer_failed_count": article_writer_failed_count,
         "article_writer_model_stats": article_writer_model_stats,
         "review_required_articles": review_required_articles,
+        "editorial_warning_count": editorial_warning_count,
+        "editorial_warning_articles": editorial_warning_articles,
         "review_provider_stats": review_provider_stats,
         "review_role_provider_stats": review_role_provider_stats,
         "review_required_count": review_required_count,
