@@ -52,39 +52,45 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertEqual(record["site_url"], "https://didaydo.vercel.app/bai-viet/story")
             self.assertIsNone(record["sync_error"])
 
-    def test_missing_licensed_cover_is_recorded_without_masking_original_error(self):
+    def test_missing_licensed_cover_uses_first_party_cover_and_still_publishes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = str(Path(temp_dir) / "crawler.sqlite")
-            article = {
-                "source_url": "https://example.com/travel/no-cover",
-                "source_title": "A travel article",
+            source_url = "https://example.com/travel/no-cover"
+            article = {"source_url": source_url, "source_title": "A travel article"}
+            draft = {"seo_title": "A travel article", "seo_content": "<p>Editorial content.</p>"}
+            fallback = {
+                "url": "https://didaydo.example/images/didaydo-editorial-cover.svg",
+                "alt": "Ảnh bìa minh họa du lịch do Didaydo tự thiết kế",
+                "cover_role": "site_owned_fallback_cover",
             }
-            draft = {
-                "seo_title": "A travel article",
-                "seo_content": "<p>Editorial content.</p>",
-            }
+
+            def attach_fallback(target_article, *_args, **_kwargs):
+                target_article["editorial_cover_image"] = fallback
+                target_article.setdefault("image_warnings", []).append(
+                    "Không tìm được ảnh có quyền sử dụng rõ ràng; dùng ảnh gốc Didaydo."
+                )
+                return fallback
 
             with (
                 patch.object(site_publisher, "SITE_SYNC_ENABLED", True),
                 patch.object(site_publisher, "SITE_URL", "https://didaydo.example"),
                 patch.object(site_publisher, "SITE_INGEST_API_KEY", "x" * 32),
                 patch.object(site_publisher, "_check_api_ready"),
-                patch(
-                    "site_publisher.requests.get",
-                    return_value=FakeResponse({"found": False}),
-                ),
-                patch.object(site_publisher, "_ensure_source_article_images", return_value=None),
+                patch("site_publisher.requests.get", return_value=FakeResponse({"found": False})),
+                patch("site_publisher.requests.post", return_value=FakeResponse({
+                    "success": True,
+                    "failed": 0,
+                    "results": [{"status": "published", "id": "321", "slug": "a-travel-article", "action": "created"}],
+                })) as post,
+                patch.object(site_publisher, "_ensure_source_article_images", side_effect=attach_fallback),
             ):
-                with self.assertRaisesRegex(
-                    RuntimeError,
-                    "Bài nguồn không có ảnh hợp lệ",
-                ):
-                    site_publisher.sync_draft_to_site(article, draft, db_path)
+                result = site_publisher.sync_draft_to_site(article, draft, db_path)
 
-            record = site_publisher.get_sync_record(article["source_url"], db_path)
-            self.assertIsNotNone(record)
-            self.assertEqual(record["site_status"], "failed")
-            self.assertIn("Cover image: RuntimeError", record["sync_error"])
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "published")
+            self.assertEqual(post.call_args.kwargs["json"]["coverImage"], fallback["url"])
+            record = site_publisher.get_sync_record(source_url, db_path)
+            self.assertEqual(record["site_status"], "published")
 
 
     def test_editorial_risk_does_not_hold_publication(self):
@@ -286,16 +292,46 @@ class SitePublisherSyncStateTests(unittest.TestCase):
             self.assertEqual(cover["source_page_url"], external["source_page_url"])
             self.assertEqual(cover["cover_role"], "external_fallback_cover")
 
-    def test_no_source_photo_or_external_match_returns_none(self):
+    def test_no_source_photo_or_licensed_external_match_uses_first_party_cover(self):
         article = {
             "source_url": "https://travel.example.com/no-photo",
             "source_title": "Bài viết không có ảnh",
             "source_images": [],
         }
-        with patch("image_finder.find_cover_image", return_value=None) as search:
+        with (
+            patch.object(site_publisher, "SITE_URL", "https://didaydo.example"),
+            patch("image_finder.find_cover_image", return_value=None) as search,
+        ):
             result = site_publisher._ensure_source_article_images(article, ":memory:")
         search.assert_called_once()
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["cover_role"], "site_owned_fallback_cover")
+        self.assertEqual(
+            result["url"],
+            "https://didaydo.example/images/didaydo-editorial-cover.svg",
+        )
+        self.assertTrue(article["image_warnings"])
+        self.assertIn("Didaydo", article["image_warnings"][0])
+
+    def test_unlicensed_external_cover_is_rejected_in_favor_of_first_party_art(self):
+        article = {
+            "source_url": "https://travel.example.com/unlicensed-photo",
+            "source_title": "Bài viết về một điểm đến",
+            "source_images": [],
+        }
+        unlicensed = {
+            "url": "https://images.example.net/unverified.jpg",
+            "provider": "Unknown",
+            "source_page_url": "https://images.example.net/photo",
+        }
+        with (
+            patch.object(site_publisher, "SITE_URL", "https://didaydo.example"),
+            patch("image_finder.find_cover_image", return_value=unlicensed),
+        ):
+            result = site_publisher._ensure_source_article_images(article, ":memory:")
+        self.assertEqual(result["cover_role"], "site_owned_fallback_cover")
+        self.assertNotEqual(result["url"], unlicensed["url"])
+        self.assertTrue(any("không có giấy phép" in item for item in article["image_warnings"]))
 
     def test_vinpearl_source_photos_are_blocked_and_replaced_with_licensed_cover(self):
         original_url = "https://www.vinpearl.com/sites/default/files/ha-long-bay.jpg"
