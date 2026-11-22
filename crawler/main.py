@@ -647,6 +647,43 @@ def _feed_entry_summary(entry):
     return summary[:1200]
 
 
+def _normalize_restriction_text(value):
+    """Normalize Vietnamese/English metadata so restricted-place checks ignore accents and separators."""
+    text = clean_text(value or "").casefold().replace("đ", "d")
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+_RESTRICTED_MILITARY_PLACE_TERMS = (
+    "cam ranh",
+    "can cu quan su",
+    "quan cang",
+    "cang quan su",
+    "khu quan su",
+    "vung quan su",
+    "khu dong quan",
+    "don vi dong quan",
+    "doanh trai",
+    "co so quan su",
+    "military base",
+    "naval base",
+    "military port",
+    "military installation",
+    "military zone",
+    "naval facility",
+    "garrison",
+)
+
+
+def is_restricted_military_location_travel(*values):
+    """Return True for travel candidates tied to Cam Ranh or explicit military facilities."""
+    normalized = _normalize_restriction_text(" ".join(
+        clean_text(value) for value in values if value is not None
+    ))
+    return any(term in normalized for term in _RESTRICTED_MILITARY_PLACE_TERMS)
+
+
 def _parse_feed_items(xml, source):
     feed_url = source.get("feed_url", "")
     soup = BeautifulSoup(xml, "xml")
@@ -661,7 +698,6 @@ def _parse_feed_items(xml, source):
                 or path_lower.rstrip("/").endswith(("/feed", "/rss", "/rss.xml", "/feed.xml"))
                 or not _url_allowed_for_source(link_url, source)):
             continue
-        seen.add(link_url)
         title_node = entry.find("title")
         title = clean_text(title_node.get_text(" ", strip=True) if title_node else "")
         if not title:
@@ -670,6 +706,10 @@ def _parse_feed_items(xml, source):
         date_node = entry.find("pubDate") or entry.find("published") or entry.find("updated") or entry.find("date")
         published = clean_text(date_node.get_text(strip=True) if date_node else "")
         categories = [clean_text(c.get("term") or c.get_text(" ", strip=True)) for c in entry.find_all("category") if clean_text(c.get("term") or c.get_text(" ", strip=True))]
+        if is_restricted_military_location_travel(title, summary, categories, link_url):
+            log.info("Bỏ ứng viên du lịch thuộc khu vực/cơ sở quân sự bị loại trừ từ RSS: %s", link_url)
+            continue
+        seen.add(link_url)
         item = {
             "source_url": link_url,
             "rss_title": title[:500],
@@ -741,10 +781,13 @@ def _parse_html_listing_items(html, source):
             card = card.parent
         if not published:
             continue
-        seen.add(link_url)
         summary = card_text.replace(title, " ", 1)
         summary = re.sub(r"\b\d{1,2}/\d{1,2}/20\d{2}\b", " ", summary)
         summary = clean_text(summary)[:1200]
+        if is_restricted_military_location_travel(title, summary, link_url):
+            log.info("Bỏ ứng viên du lịch thuộc khu vực/cơ sở quân sự bị loại trừ từ HTML listing: %s", link_url)
+            continue
+        seen.add(link_url)
         item = {
             "source_url": link_url,
             "rss_title": title[:500],
@@ -3849,6 +3892,13 @@ def main(argv=None):
         discovered_url = normalize_url(item.get("source_url", ""))
         if not discovered_url:
             continue
+        if is_restricted_military_location_travel(
+            item.get("rss_title"), item.get("rss_summary"), item.get("rss_categories"), discovered_url
+        ):
+            remember_source(discovered_url, "", "", status="restricted_military_location")
+            irrelevant_skipped += 1
+            log.info("Bỏ và không crawl bài về điểm/cơ sở quân sự bị loại trừ: %s", discovered_url)
+            continue
         if already_seen(discovered_url):
             log.info("Bỏ qua URL đã xử lý: %s", discovered_url)
             duplicates += 1
@@ -3859,6 +3909,31 @@ def main(argv=None):
         try:
             article = extract_article_metadata(item)
             canonical_url = article["source_url"]
+
+            if is_restricted_military_location_travel(
+                article.get("source_title"),
+                article.get("source_summary"),
+                article.get("source_section"),
+                article.get("source_meta_keywords"),
+                article.get("destination_city"),
+                article.get("source_body"),
+                canonical_url,
+            ):
+                remember_source(
+                    discovered_url, article.get("title_key", ""), article.get("published_day", ""),
+                    status="restricted_military_location",
+                )
+                if canonical_url != discovered_url:
+                    remember_source(
+                        canonical_url, article.get("title_key", ""), article.get("published_day", ""),
+                        status="restricted_military_location",
+                    )
+                irrelevant_skipped += 1
+                log.info(
+                    "Bỏ bài sau bước đối chiếu metadata; không gửi AI vì liên quan khu vực/cơ sở quân sự: %s",
+                    canonical_url,
+                )
+                continue
 
             if not article.get("topic_relevant", True):
                 remember_source(
