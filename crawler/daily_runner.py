@@ -132,6 +132,8 @@ def main():
     review_required_count = 0
     review_required_articles = []
     published_articles = []
+    editorial_warning_count = 0
+    editorial_warning_articles = []
     recovered_writer_model_stats = {}
     pending_rows = site_publisher.list_pending_drafts(db_path, limit=maximum)
     for row in pending_rows:
@@ -146,7 +148,6 @@ def main():
                 article,
                 draft,
                 db_path,
-                hold_for_review=(draft.get("editorial_review_status") != "passed"),
             )
         except Exception as exc:
             if _is_retryable_cover_image_error(exc):
@@ -179,6 +180,17 @@ def main():
             recovered_published += 1
             published_title = str(row.get("seo_title") or row.get("source_title") or "Bài viết mới")
             published_url = result.get("site_url") or ""
+            recovery_warnings = []
+            editorial_reason = str(
+                draft.get("editorial_warning_reason")
+                or (draft.get("editorial_review_reason") if draft.get("editorial_review_status") == "warning" else "")
+                or ""
+            ).strip()
+            if editorial_reason:
+                recovery_warnings.append("Nội dung: " + editorial_reason)
+            image_warnings = article.get("image_warnings")
+            if isinstance(image_warnings, list):
+                recovery_warnings.extend(str(item).strip() for item in image_warnings if str(item).strip())
             published_articles.append({
                 "title": published_title,
                 "url": published_url,
@@ -186,7 +198,18 @@ def main():
                 "writer_provider": str(row.get("ai_writer_provider") or row.get("ai_provider") or ""),
                 "writer_model": str(row.get("ai_writer_model") or ""),
                 "review_providers": {},
+                "editorial_warnings": recovery_warnings,
             })
+            if recovery_warnings:
+                editorial_warning_count += 1
+                editorial_warning_articles.append({
+                    "title": published_title[:180],
+                    "url": published_url,
+                    "source": str(article.get("source_name") or article.get("source_publisher") or "")[:120],
+                    "reason": " ".join(recovery_warnings)[:1400],
+                    "writer_provider": str(row.get("ai_writer_provider") or row.get("ai_provider") or ""),
+                    "writer_model": str(row.get("ai_writer_model") or ""),
+                })
             model_name = str(row.get("ai_writer_model") or "").strip()
             if model_name:
                 recovered_writer_model_stats[model_name] = recovered_writer_model_stats.get(model_name, 0) + 1
@@ -219,6 +242,8 @@ def main():
         fatal_error = bool(crawler_result.get("fatal_error", False))
         fatal_error_reason = str(crawler_result.get("fatal_error_reason") or "")
         published_articles.extend(crawler_result.get("published_articles") or [])
+        editorial_warning_count += int(crawler_result.get("editorial_warning_count", 0) or 0)
+        editorial_warning_articles.extend(crawler_result.get("editorial_warning_articles") or [])
     else:
         bot._reconcile_site_publications()
         bot.cleanup_published_artifacts()
@@ -304,6 +329,8 @@ def main():
         "article_writer_failed_count": int(crawler_result.get("article_writer_failed_count", 0) or 0),
         "article_writer_model_stats": combined_writer_model_stats,
         "review_required_articles": review_required_articles[:20],
+        "editorial_warning_count": editorial_warning_count,
+        "editorial_warning_articles": editorial_warning_articles[:30],
         "review_provider_stats": crawler_result.get("review_provider_stats") or {},
         "review_role_provider_stats": crawler_result.get("review_role_provider_stats") or {},
         "review_required_count": review_required_count,
