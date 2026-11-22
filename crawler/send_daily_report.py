@@ -454,7 +454,7 @@ def _build_html(
         extra_stats = (
             f"<p style='margin:12px 0 0;color:#667085;font-size:12px'>"
             f"AI viết bài: <strong>{_esc(writer_provider)}</strong> ({writer_mode_label})"
-            f"<br>Bản nháp AI tạo thành công: <strong>{writer_success_count}/{writer_attempt_count}</strong>"
+            f"<br>AI viết xong: <strong>{writer_success_count}/{writer_attempt_count}</strong>"
             f" · Lỗi writer: {writer_failed_count}"
             f"<br>Model Gemini thực tế: {writer_model_summary}"
             f"<br>AI kiểm duyệt (không viết bài): {reviewer_label}"
