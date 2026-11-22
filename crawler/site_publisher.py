@@ -551,6 +551,33 @@ def _persist_source_image_metadata(article: dict, db_path: str, images: list[dic
         log.debug("Không cập nhật được metadata ảnh nguồn (%s)", type(exc).__name__)
 
 
+def _site_owned_fallback_cover(article: dict, image_warnings: list, reason: str) -> dict:
+    """Provide an original first-party cover when no rights-cleared destination photo is available."""
+    warning = clean(reason) or (
+        "Không tìm được ảnh điểm đến có quyền sử dụng rõ ràng; bài dùng ảnh bìa minh họa do Didaydo tự thiết kế."
+    )
+    if warning not in image_warnings:
+        image_warnings.append(warning)
+    cover_url = f"{SITE_URL.rstrip('/')}/images/didaydo-editorial-cover.svg"
+    cover = {
+        "url": cover_url,
+        "original_url": cover_url,
+        "alt": "Ảnh bìa minh họa du lịch do Didaydo tự thiết kế",
+        "provider": "Didaydo",
+        "source_name": "Didaydo",
+        "license": "Tác phẩm đồ họa gốc do Didaydo tự thiết kế",
+        "source_page_url": cover_url,
+        "is_cover": True,
+        "cover_role": "site_owned_fallback_cover",
+        "asset_storage": "site_owned",
+        "processed_format": "svg",
+    }
+    article["editorial_cover_image"] = cover
+    article["source_image_url"] = cover_url
+    article["image_credit"] = ""
+    return cover
+
+
 def _ensure_source_article_images(
     article: dict,
     db_path: str,
@@ -561,7 +588,7 @@ def _ensure_source_article_images(
     Source photos are not downloaded, sent to vision models, cropped, re-encoded,
     or uploaded. Only their URL scheme and descriptive metadata are normalized.
     """
-    from image_finder import find_cover_image
+    from image_finder import find_cover_image, is_license_allowed
     from image_optimizer import build_vietnamese_alt_text
 
     source_url = normalize_source_url(article.get("source_url", ""))
@@ -752,27 +779,47 @@ def _ensure_source_article_images(
 
     # Only reach the external image providers when the source article (including
     # OG/RSS image fallback) contains no usable image URL.
-    external = find_cover_image(
-        search_article,
-        exclude_urls=source_photo_urls,
-        exclude_domains=blocked_source_domains,
-    )
+    try:
+        external = find_cover_image(
+            search_article,
+            exclude_urls=source_photo_urls,
+            exclude_domains=blocked_source_domains,
+        )
+    except Exception as exc:
+        log.warning("Không tìm được ảnh ngoài có thể dùng làm bìa (%s): %s", type(exc).__name__, source_url)
+        external = None
+
     if not isinstance(external, dict):
-        warning = "Không tìm được ảnh đại diện phù hợp; bài chưa thể đăng vì website yêu cầu ảnh bìa."
-        if warning not in image_warnings:
-            image_warnings.append(warning)
-        log.warning("Bài nguồn không có ảnh và không tìm được ảnh ngoài phù hợp: %s", source_url)
-        return None
+        log.warning("Không tìm được ảnh điểm đến có quyền sử dụng rõ ràng; dùng ảnh bìa gốc của website: %s", source_url)
+        return _site_owned_fallback_cover(
+            article,
+            image_warnings,
+            "Không tìm được ảnh điểm đến có quyền sử dụng rõ ràng; bài vẫn được xuất bản bằng ảnh bìa minh họa gốc do Didaydo tự thiết kế.",
+        )
 
     external = dict(external)
     external_url = _normalize_source_image_url(external.get("url"), external.get("source_page_url") or source_url)
     if not external_url:
-        log.warning("Ảnh ngoài trả về URL không hợp lệ: %s", source_url)
-        return None
+        return _site_owned_fallback_cover(
+            article,
+            image_warnings,
+            "Ảnh thay thế có URL không hợp lệ; không sử dụng ảnh này và chuyển sang ảnh bìa minh họa gốc của Didaydo.",
+        )
     external_host = urlparse(external_url).hostname or ""
     if any(_host_matches_domain(external_host, domain) for domain in blocked_source_domains):
         log.warning("Từ chối ảnh thay thế vẫn nằm trên domain nguồn bị chặn: %s", external_host)
-        return None
+        return _site_owned_fallback_cover(
+            article,
+            image_warnings,
+            "Ảnh tìm được vẫn thuộc domain nguồn bị loại theo chính sách bản quyền; bài dùng ảnh bìa minh họa gốc do Didaydo tự thiết kế.",
+        )
+
+    if not is_license_allowed(clean(external.get("license"))):
+        return _site_owned_fallback_cover(
+            article,
+            image_warnings,
+            "Ảnh thay thế không có giấy phép được chấp nhận rõ ràng; ảnh này bị loại và bài dùng ảnh bìa minh họa gốc do Didaydo tự thiết kế.",
+        )
 
     external["original_url"] = clean(external.get("url"))
     external["url"] = external_url
@@ -783,16 +830,12 @@ def _ensure_source_article_images(
     external["cover_role"] = "external_fallback_cover"
     external["asset_storage"] = "external_source"
     external["processed_format"] = "original"
-    if not clean(external.get("license")):
-        warning = "Ảnh đại diện ngoài chưa có metadata giấy phép rõ ràng; cần kiểm tra quyền sử dụng."
-        if warning not in image_warnings:
-            image_warnings.append(warning)
     article["editorial_cover_image"] = external
     article["source_image_url"] = external_url
     article["image_credit"] = clean(external.get("creator") or external.get("credit") or external["source_name"])
 
     log.info(
-        "Bài nguồn không có ảnh; dùng ảnh ngoài có metadata giấy phép: provider=%s",
+        "Bài nguồn không có ảnh được phép tái sử dụng; dùng ảnh ngoài có giấy phép được chấp nhận: provider=%s",
         external["source_name"],
     )
     return external
