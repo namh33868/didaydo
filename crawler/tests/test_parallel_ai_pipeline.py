@@ -281,6 +281,41 @@ class EditorialPublicationGateTests(unittest.TestCase):
 
 
 class HtmlSourceTests(unittest.TestCase):
+    def test_military_area_travel_candidates_are_rejected_but_civilian_destinations_remain(self):
+        self.assertTrue(main.is_restricted_military_location_travel("Du lịch Cam Ranh"))
+        self.assertTrue(main.is_restricted_military_location_travel("Tham quan quân cảng và căn cứ quân sự"))
+        self.assertTrue(main.is_restricted_military_location_travel("Travel around a naval base"))
+        self.assertFalse(main.is_restricted_military_location_travel("Kinh nghiệm du lịch Hội An"))
+        self.assertFalse(main.is_restricted_military_location_travel("Nghỉ dưỡng tại bãi biển Nha Trang"))
+
+    def test_rss_parser_skips_cam_ranh_before_fetching_article_page(self):
+        feed = """
+        <rss version="2.0"><channel>
+          <item>
+            <title>Du lịch Cam Ranh: các điểm tham quan và trải nghiệm</title>
+            <link>https://travel.example.test/cam-ranh-travel-guide</link>
+            <description>Gợi ý khám phá điểm đến Cam Ranh.</description>
+          </item>
+          <item>
+            <title>Kinh nghiệm du lịch Hội An</title>
+            <link>https://travel.example.test/hoi-an-travel-guide</link>
+            <description>Gợi ý lịch trình và trải nghiệm tại Hội An.</description>
+          </item>
+        </channel></rss>
+        """
+        source = {
+            "id": "test_travel_source",
+            "name": "Travel Test",
+            "feed_url": "https://travel.example.test/rss.xml",
+            "language": "vi",
+        }
+        with patch.object(main, "_url_allowed_for_source", return_value=True):
+            items = main._parse_feed_items(feed, source)
+
+        self.assertEqual(len(items), 1)
+        self.assertIn("hoi-an", items[0]["source_url"])
+        self.assertNotIn("cam-ranh", items[0]["source_url"])
+
     def test_vinpearl_listing_parser_extracts_article_cards_not_navigation(self):
         html = """
         <html lang="vi"><body>
