@@ -75,16 +75,13 @@ function resolveIngestStatus(
   requestedStatus: PostInput["status"],
   existingStatus: PostStatus | undefined,
   autoPublish: boolean,
-  holdForReview: boolean,
 ): PostStatus {
   // An ingestion retry must never unpublish a public post or restore an archived one.
   if (existingStatus === "published" || existingStatus === "archived") return existingStatus;
   if (requestedStatus === "archived") return "archived";
-  if (holdForReview) return "draft";
 
-  // INGEST_AUTO_PUBLISH is the policy switch for this authenticated crawler endpoint.
-  // The crawler currently sends status="draft" for compatibility with its old draft
-  // workflow, so that value must not silently defeat the site's auto-publish setting.
+  // Editorial review results are warnings in the crawler, never a reason to hold a post.
+  // INGEST_AUTO_PUBLISH remains the sole switch controlling direct publication.
   return autoPublish ? "published" : "draft";
 }
 
@@ -128,7 +125,6 @@ async function saveIncomingPost(input: PostInput, autoPublish: boolean) {
     input.status,
     existing?.status,
     autoPublish,
-    input.holdForReview === true,
   );
   const publishedAt: Date | null = status === "published"
     ? existing?.published_at || new Date()
@@ -307,7 +303,6 @@ export async function GET(request: Request) {
       feature: "auto-publish-ingest-v2",
       autoPublishEnabled: isAutoPublishEnabled(),
       statusPolling: true,
-      reviewHoldSupported: true,
     });
   }
 
